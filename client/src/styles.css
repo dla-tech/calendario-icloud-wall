@@ -360,6 +360,10 @@ h1 {
   color: #172033;
 }
 
+.mini-section .fc .fc-daygrid-day {
+  cursor: pointer;
+}
+
 .mini-section .fc .fc-daygrid-day-number {
   padding: 4px;
   color: #334155;
@@ -387,6 +391,37 @@ h1 {
 
 .mini-section .fc .fc-day-today {
   background: #e8f1ff;
+}
+
+.mini-section .fc .selected-mini-day {
+  background: #dbeafe;
+  box-shadow: inset 0 0 0 2px #1f6feb;
+}
+
+.mini-section .fc .fc-daygrid-day-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  min-height: 8px;
+  margin: 0 4px 3px;
+}
+
+.mini-section .fc .fc-daygrid-event {
+  width: 7px;
+  height: 7px;
+  min-height: 7px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mini-section .fc .fc-event-main,
+.mini-section .fc .fc-event-title,
+.mini-section .fc .fc-event-time {
+  display: none;
 }
 
 @media (max-width: 1300px) {

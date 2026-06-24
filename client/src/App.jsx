@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
+import interactionPlugin from '@fullcalendar/interaction';
 import esLocale from '@fullcalendar/core/locales/es';
 import { CalendarDays, Expand, RefreshCw } from 'lucide-react';
 
@@ -119,6 +120,20 @@ function addDays(date, days) {
   return next;
 }
 
+function startOfWeek(date) {
+  const next = startOfDay(date);
+  next.setDate(next.getDate() - next.getDay());
+  return next;
+}
+
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function nextMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 1);
+}
+
 function isSameDay(first, second) {
   return startOfDay(first).getTime() === startOfDay(second).getTime();
 }
@@ -129,7 +144,7 @@ function eventOverlapsRange(event, rangeStart, rangeEnd) {
   return start < rangeEnd && end >= rangeStart;
 }
 
-function DateTimePanel({ calendars, status, onRefresh, onFullscreen, isLoading }) {
+function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, onRefresh, onFullscreen, isLoading }) {
   const [now, setNow] = useState(new Date());
   const weekday = weekdayFormatter.format(now);
   const month = monthFormatter.format(now);
@@ -161,7 +176,7 @@ function DateTimePanel({ calendars, status, onRefresh, onFullscreen, isLoading }
         </button>
       </div>
 
-      <MiniCalendar />
+      <MiniCalendar events={events} selectedDate={selectedDate} onSelectDate={onSelectDate} />
       <CalendarList calendars={calendars} />
 
       <div className="sync-status">{status}</div>
@@ -169,13 +184,20 @@ function DateTimePanel({ calendars, status, onRefresh, onFullscreen, isLoading }
   );
 }
 
-function EventBoard({ events, activeView }) {
+function EventBoard({ events, activeView, selectedDate }) {
   const { visibleEvents, hiddenCount } = useMemo(() => {
-    const now = new Date();
-    const today = startOfDay(now);
-    const tomorrow = addDays(today, 1);
-    const weekEnd = addDays(today, 7);
-    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const baseDate = startOfDay(selectedDate);
+    const tomorrow = addDays(baseDate, 1);
+    const weekStart = startOfWeek(baseDate);
+    const weekEnd = addDays(weekStart, 7);
+    const monthStart = startOfMonth(baseDate);
+    const monthEnd = nextMonth(baseDate);
+
+    const rangeStart = activeView === 'timeGridDay'
+      ? baseDate
+      : activeView === 'timeGridWeek'
+        ? weekStart
+        : monthStart;
 
     const rangeEnd = activeView === 'timeGridDay'
       ? tomorrow
@@ -184,20 +206,22 @@ function EventBoard({ events, activeView }) {
         : monthEnd;
 
     const filteredEvents = events
-      .filter((event) => eventOverlapsRange(event, today, rangeEnd))
+      .filter((event) => eventOverlapsRange(event, rangeStart, rangeEnd))
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
     return {
       visibleEvents: filteredEvents.slice(0, 8),
       hiddenCount: Math.max(filteredEvents.length - 8, 0)
     };
-  }, [activeView, events]);
+  }, [activeView, events, selectedDate]);
 
+  const isSelectedToday = isSameDay(selectedDate, new Date());
+  const titleDate = isSelectedToday ? 'hoy' : fullDateFormatter.format(selectedDate);
   const title = activeView === 'timeGridDay'
-    ? 'Eventos de hoy'
+    ? `Eventos de ${titleDate}`
     : activeView === 'timeGridWeek'
-      ? 'Eventos de la semana'
-      : 'Eventos del mes';
+      ? `Semana de ${titleDate}`
+      : `Mes de ${titleDate}`;
 
   return (
     <section className="event-board" aria-label={title}>
@@ -240,7 +264,24 @@ function EventBoard({ events, activeView }) {
   );
 }
 
-function MiniCalendar() {
+function MiniCalendar({ events, selectedDate, onSelectDate }) {
+  const calendarRef = useRef(null);
+
+  useEffect(() => {
+    calendarRef.current?.getApi().gotoDate(selectedDate);
+  }, [selectedDate]);
+
+  const miniEvents = useMemo(() => (
+    events.map((event) => ({
+      id: `mini-${event.id}`,
+      title: '',
+      start: event.start,
+      allDay: true,
+      backgroundColor: event.backgroundColor,
+      borderColor: event.backgroundColor
+    }))
+  ), [events]);
+
   return (
     <section className="sidebar-section mini-section">
       <div className="section-title">
@@ -248,9 +289,16 @@ function MiniCalendar() {
         <span>Mes</span>
       </div>
       <FullCalendar
-        plugins={[dayGridPlugin]}
+        ref={calendarRef}
+        plugins={[dayGridPlugin, interactionPlugin]}
         locale={esLocale}
         initialView="dayGridMonth"
+        initialDate={selectedDate}
+        dateClick={(info) => onSelectDate(info.date)}
+        dayCellClassNames={(info) => (isSameDay(info.date, selectedDate) ? ['selected-mini-day'] : [])}
+        events={miniEvents}
+        eventDisplay="block"
+        dayMaxEvents={3}
         headerToolbar={false}
         height="auto"
         fixedWeekCount={false}
@@ -285,6 +333,7 @@ function App() {
   const [events, setEvents] = useState(demoData.events);
   const [calendars, setCalendars] = useState(demoData.calendars);
   const [activeView, setActiveView] = useState('timeGridDay');
+  const [selectedDate, setSelectedDate] = useState(new Date());
   const [status, setStatus] = useState('Modo demo: configura iCloud para ver tus eventos reales');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -324,6 +373,18 @@ function App() {
     return () => window.clearInterval(interval);
   }, [fetchEvents]);
 
+  useEffect(() => {
+    if (isSameDay(selectedDate, new Date())) {
+      return undefined;
+    }
+
+    const resetTimer = window.setTimeout(() => {
+      setSelectedDate(new Date());
+    }, 60000);
+
+    return () => window.clearTimeout(resetTimer);
+  }, [selectedDate]);
+
   const requestFullscreen = async () => {
     if (!document.fullscreenElement) {
       await document.documentElement.requestFullscreen();
@@ -336,6 +397,9 @@ function App() {
     <main className="wall-calendar">
       <DateTimePanel
         calendars={calendars}
+        events={events}
+        selectedDate={selectedDate}
+        onSelectDate={setSelectedDate}
         status={status}
         onRefresh={fetchEvents}
         onFullscreen={requestFullscreen}
@@ -358,7 +422,7 @@ function App() {
           </div>
         </header>
 
-        <EventBoard events={events} activeView={activeView} />
+        <EventBoard events={events} activeView={activeView} selectedDate={selectedDate} />
       </section>
     </main>
   );
