@@ -154,7 +154,7 @@ function DateTimePanel({ calendars, status, onRefresh, onFullscreen, isLoading }
 }
 
 function EventBoard({ events, activeView }) {
-  const visibleEvents = useMemo(() => {
+  const { visibleEvents, hiddenCount } = useMemo(() => {
     const now = new Date();
     const today = startOfDay(now);
     const tomorrow = addDays(today, 1);
@@ -167,10 +167,14 @@ function EventBoard({ events, activeView }) {
         ? weekEnd
         : monthEnd;
 
-    return events
+    const filteredEvents = events
       .filter((event) => eventOverlapsRange(event, today, rangeEnd))
-      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
-      .slice(0, activeView === 'dayGridMonth' ? 18 : 12);
+      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
+    return {
+      visibleEvents: filteredEvents.slice(0, 8),
+      hiddenCount: Math.max(filteredEvents.length - 8, 0)
+    };
   }, [activeView, events]);
 
   const title = activeView === 'timeGridDay'
@@ -184,6 +188,9 @@ function EventBoard({ events, activeView }) {
       <div className="board-heading">
         <p className="eyebrow">Apple Calendar / iCloud</p>
         <h1>{title}</h1>
+        {hiddenCount > 0 && (
+          <p className="event-overflow-note">+{hiddenCount} eventos mas en esta vista</p>
+        )}
       </div>
 
       {visibleEvents.length === 0 ? (
