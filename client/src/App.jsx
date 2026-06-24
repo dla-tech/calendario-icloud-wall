@@ -38,6 +38,7 @@ const eventTimeFormatter = new Intl.DateTimeFormat('es-PR', {
 
 const shortWeekdays = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
 const shortMonths = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
 
 function buildDemoData() {
   const today = startOfDay(new Date());
@@ -341,7 +342,7 @@ function App() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/events');
+      const response = await fetch(`${apiBaseUrl}/api/events`);
       const payload = await response.json();
 
       if (!response.ok) {
@@ -369,7 +370,7 @@ function App() {
 
   useEffect(() => {
     fetchEvents();
-    const interval = window.setInterval(fetchEvents, 15000);
+    const interval = window.setInterval(fetchEvents, 10000);
     return () => window.clearInterval(interval);
   }, [fetchEvents]);
 

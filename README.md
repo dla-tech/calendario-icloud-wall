@@ -1,6 +1,6 @@
 # Calendario digital de pared para iMac
 
-App web con React + Vite, Node.js + Express, FullCalendar y conexion CalDAV a Apple Calendar/iCloud. Esta pensada para dejarse abierta en pantalla completa en una iMac, con reloj grande, eventos visibles desde lejos, vistas de dia, semana y mes, barra lateral, mini calendario y actualizacion automatica cada 15 segundos.
+App web con React + Vite, Node.js + Express, FullCalendar y conexion CalDAV a Apple Calendar/iCloud. Esta pensada para dejarse abierta en pantalla completa en una iMac, con reloj grande, eventos visibles desde lejos, vistas de dia, semana y mes, barra lateral, mini calendario y actualizacion automatica cada 10 segundos.
 
 ## Requisitos
 
@@ -29,9 +29,12 @@ ICLOUD_USERNAME=tu-correo@icloud.com
 ICLOUD_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
 CALDAV_SERVER=https://caldav.icloud.com
 PORT=4000
+VITE_API_BASE_URL=
 ```
 
 Las credenciales solo se usan en el servidor Express. El frontend nunca recibe la contrasena de iCloud.
+
+`VITE_API_BASE_URL` puede quedarse vacio cuando corres client y server juntos con `npm run dev`. Si despliegas el backend en otro dominio, pon ahi la URL publica del server, por ejemplo `https://tu-api.vercel.app`.
 
 ## Crear una contrasena especifica de app en Apple ID
 
@@ -64,7 +67,7 @@ Abre `http://localhost:5173` en la iMac.
 1. Abre la app en Safari, Chrome o Edge.
 2. Pulsa el boton de pantalla completa en la esquina superior derecha de la app.
 3. Tambien puedes usar el modo pantalla completa del navegador en macOS.
-4. Deja la pestana abierta. La app consulta `/api/events` cada 15 segundos.
+4. Deja la pestana abierta. La app consulta `/api/events` cada 10 segundos.
 
 Si cambias eventos desde tu iPhone en Apple Calendar, iCloud los expone por CalDAV y la web los vuelve a cargar automaticamente en el siguiente ciclo de sincronizacion.
 
