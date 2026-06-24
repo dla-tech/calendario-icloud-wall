@@ -35,6 +35,9 @@ const eventTimeFormatter = new Intl.DateTimeFormat('es-PR', {
   minute: '2-digit'
 });
 
+const shortWeekdays = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
+const shortMonths = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
 function buildDemoData() {
   const today = startOfDay(new Date());
   const at = (days, hour, minute, durationMinutes) => {
@@ -89,6 +92,19 @@ function formatEventTime(event) {
   const end = event.end ? eventTimeFormatter.format(new Date(event.end)) : '';
 
   return end ? `${start} - ${end}` : start;
+}
+
+function formatEventDay(date, isToday) {
+  if (isToday) {
+    return 'HOY';
+  }
+
+  const weekday = shortWeekdays[date.getDay()];
+  const month = shortMonths[date.getMonth()];
+  const day = date.getDate();
+  const year = String(date.getFullYear()).slice(-2);
+
+  return `${weekday}, ${month} ${day}/${year}`;
 }
 
 function startOfDay(date) {
@@ -206,7 +222,10 @@ function EventBoard({ events, activeView }) {
             return (
               <article className="event-block" key={event.id}>
                 <div className="event-accent" style={{ backgroundColor: event.backgroundColor }} />
-                <div className="event-time">{formatEventTime(event)}</div>
+                <div className="event-head">
+                  <div className="event-day">{formatEventDay(eventDate, isToday)}</div>
+                  <div className="event-time">{formatEventTime(event)}</div>
+                </div>
                 <div className="event-title">{event.title}</div>
                 <div className="event-meta">
                   <span>{isToday ? 'Hoy' : fullDateFormatter.format(eventDate)}</span>

@@ -280,11 +280,30 @@ h1 {
   width: 12px;
 }
 
+.event-head {
+  display: grid;
+  grid-template-columns: minmax(118px, auto) 1fr;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.event-day {
+  color: #111827;
+  font-size: clamp(26px, 2.1vw, 40px);
+  font-weight: 950;
+  line-height: 0.92;
+  letter-spacing: 0;
+  text-transform: capitalize;
+}
+
 .event-time {
   color: #1f6feb;
   font-size: clamp(24px, 2vw, 36px);
   font-weight: 900;
   line-height: 1;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .event-title {
