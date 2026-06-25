@@ -3,7 +3,7 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import esLocale from '@fullcalendar/core/locales/es';
-import { CalendarDays, Delete, Expand, Plus, RefreshCw, X } from 'lucide-react';
+import { CalendarDays, Delete, Expand, Plus, RefreshCw, Volume2, X } from 'lucide-react';
 
 const viewOptions = [
   { label: 'Dia', value: 'timeGridDay' },
@@ -45,9 +45,11 @@ const syncTimeFormatter = new Intl.DateTimeFormat('es-PR', {
 const firstDayOfWeek = 1;
 const importantEventMarker = '🚨';
 const workCalendarName = 'trabajo';
+const importantEventKeywords = ['alarma', 'alerta', 'sirena'];
 const alertWindowMs = 10 * 1000;
 const alertRepeatDurationMs = 70 * 1000;
 const alertRepeats = Math.floor(alertRepeatDurationMs / alertWindowMs) + 1;
+const alertCheckIntervalMs = 1000;
 const shortWeekdays = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
 const shortMonths = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const useDemoEvents = import.meta.env.VITE_USE_DEMO_EVENTS === 'true';
@@ -226,7 +228,14 @@ function compareEvents(first, second) {
 }
 
 function isImportantEvent(event) {
-  return String(event.title || '').includes(importantEventMarker);
+  const title = String(event.title || '');
+  const normalizedTitle = title
+    .toLocaleLowerCase('es-PR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  return title.includes(importantEventMarker)
+    || importantEventKeywords.some((keyword) => normalizedTitle.includes(keyword));
 }
 
 function isWorkCalendarEvent(event) {
@@ -240,7 +249,7 @@ function eventAlertId(event) {
 
 function isSameAlertWindow(now, target) {
   const delta = now.getTime() - target.getTime();
-  return delta >= 0 && delta < alertWindowMs;
+  return delta >= 0 && delta < alertRepeatDurationMs;
 }
 
 function startOfWeek(date) {
@@ -315,7 +324,7 @@ function isDaytime(date) {
   return hour >= 6 && hour < 18;
 }
 
-function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, syncError, onAddEvent, onRefresh, onFullscreen }) {
+function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, syncError, onAddEvent, onRefresh, onFullscreen, onTestAlert }) {
   const [now, setNow] = useState(new Date());
   const weekday = weekdayFormatter.format(now);
   const month = monthFormatter.format(now);
@@ -344,6 +353,9 @@ function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, 
         </button>
         <button className="icon-button" onClick={onRefresh} title="Actualizar" type="button">
           <RefreshCw size={30} aria-hidden="true" />
+        </button>
+        <button className="icon-button" onClick={onTestAlert} title="Probar sirena" type="button">
+          <Volume2 size={30} aria-hidden="true" />
         </button>
         <button className="icon-button" onClick={onFullscreen} title="Pantalla completa" type="button">
           <Expand size={30} aria-hidden="true" />
@@ -648,7 +660,7 @@ function useEventAlerts(events) {
   const firedAlertKeysRef = useRef(new Set());
   const activeAlertTimersRef = useRef(new Map());
 
-  const ensureAudioContext = useCallback(() => {
+  const ensureAudioContext = useCallback(async () => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
 
     if (!AudioContext) {
@@ -658,17 +670,17 @@ function useEventAlerts(events) {
     audioContextRef.current ??= new AudioContext();
 
     if (audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume().catch(() => {});
+      await audioContextRef.current.resume().catch(() => {});
     }
 
     return audioContextRef.current;
   }, []);
 
-  const playBeep = useCallback(() => {
-    const audioContext = ensureAudioContext();
+  const playBeep = useCallback(async () => {
+    const audioContext = await ensureAudioContext();
 
     if (!audioContext || audioContext.state !== 'running') {
-      return;
+      return false;
     }
 
     const oscillator = audioContext.createOscillator();
@@ -686,6 +698,8 @@ function useEventAlerts(events) {
     gain.connect(audioContext.destination);
     oscillator.start(startsAt);
     oscillator.stop(endsAt);
+
+    return true;
   }, [ensureAudioContext]);
 
   const startAlertSequence = useCallback((alertKey) => {
@@ -693,10 +707,20 @@ function useEventAlerts(events) {
       return;
     }
 
-    firedAlertKeysRef.current.add(alertKey);
+    let hasPlayed = false;
+    const playOnce = async () => {
+      const didPlay = await playBeep();
+
+      if (didPlay && !hasPlayed) {
+        hasPlayed = true;
+        firedAlertKeysRef.current.add(alertKey);
+      }
+    };
 
     const timers = Array.from({ length: alertRepeats }, (_, index) => (
-      window.setTimeout(playBeep, index * alertWindowMs)
+      window.setTimeout(() => {
+        void playOnce();
+      }, index * alertWindowMs)
     ));
 
     const cleanupTimer = window.setTimeout(() => {
@@ -708,15 +732,19 @@ function useEventAlerts(events) {
 
   useEffect(() => {
     const unlockAudio = () => {
-      ensureAudioContext();
+      void ensureAudioContext();
     };
 
-    window.addEventListener('pointerdown', unlockAudio, { once: true });
-    window.addEventListener('keydown', unlockAudio, { once: true });
+    window.addEventListener('click', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
+    window.addEventListener('pointerdown', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio);
 
     return () => {
-      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('click', unlockAudio);
       window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
     };
   }, [ensureAudioContext]);
 
@@ -762,7 +790,7 @@ function useEventAlerts(events) {
     };
 
     checkAlerts();
-    const timer = window.setInterval(checkAlerts, alertWindowMs);
+    const timer = window.setInterval(checkAlerts, alertCheckIntervalMs);
 
     return () => window.clearInterval(timer);
   }, [events, startAlertSequence]);
@@ -774,6 +802,10 @@ function useEventAlerts(events) {
     activeAlertTimersRef.current.clear();
     audioContextRef.current?.close().catch(() => {});
   }, []);
+
+  return useCallback(() => {
+    startAlertSequence(`manual:${Date.now()}`);
+  }, [startAlertSequence]);
 }
 
 function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, onSubmit }) {
@@ -1002,7 +1034,7 @@ function App() {
   const hasRealDataRef = useRef(false);
   const isFetchingRef = useRef(false);
 
-  useEventAlerts(events);
+  const testEventAlert = useEventAlerts(events);
 
   const fetchEvents = useCallback(async () => {
     if (isFetchingRef.current) {
@@ -1134,6 +1166,7 @@ function App() {
         onAddEvent={openAddEvent}
         onRefresh={fetchEvents}
         onFullscreen={requestFullscreen}
+        onTestAlert={testEventAlert}
       />
 
       <section className="events-stage" aria-label="Eventos">
