@@ -234,9 +234,7 @@ function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, 
 }
 
 function EventBoard({ events, activeView, selectedDate }) {
-  const maxVisibleEvents = 24;
-
-  const { visibleEvents, hiddenCount } = useMemo(() => {
+  const visibleEvents = useMemo(() => {
     const baseDate = startOfDay(selectedDate);
     const tomorrow = addDays(baseDate, 1);
     const weekStart = startOfWeek(baseDate);
@@ -256,15 +254,10 @@ function EventBoard({ events, activeView, selectedDate }) {
         ? weekEnd
         : monthEnd;
 
-    const filteredEvents = events
+    return events
       .filter((event) => eventOverlapsRange(event, rangeStart, rangeEnd))
       .sort((a, b) => parseEventDate(a.start).getTime() - parseEventDate(b.start).getTime());
-
-    return {
-      visibleEvents: filteredEvents.slice(0, maxVisibleEvents),
-      hiddenCount: Math.max(filteredEvents.length - maxVisibleEvents, 0)
-    };
-  }, [activeView, events, maxVisibleEvents, selectedDate]);
+  }, [activeView, events, selectedDate]);
 
   const isSelectedToday = isSameDay(selectedDate, new Date());
   const titleDate = isSelectedToday ? 'hoy' : fullDateFormatter.format(selectedDate);
@@ -281,10 +274,8 @@ function EventBoard({ events, activeView, selectedDate }) {
       : visibleEvents.length <= 12
         ? 3
         : 4;
-  const gridRows = Math.max(1, Math.ceil(visibleEvents.length / gridColumns));
   const eventGridStyle = {
-    '--event-columns': gridColumns,
-    '--event-rows': gridRows
+    '--event-columns': gridColumns
   };
   const highlightedIds = useMemo(
     () => highlightedEventIds(visibleEvents, selectedDate),
@@ -296,9 +287,6 @@ function EventBoard({ events, activeView, selectedDate }) {
       <div className="board-heading">
         <p className="eyebrow">Apple Calendar / iCloud</p>
         <h1>{title}</h1>
-        {hiddenCount > 0 && (
-          <p className="event-overflow-note">+{hiddenCount} eventos mas en esta vista</p>
-        )}
       </div>
 
       {visibleEvents.length === 0 && activeView === 'timeGridDay' ? (
