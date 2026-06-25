@@ -177,31 +177,12 @@ function eventsForDay(events, date) {
   return events.filter((event) => eventOverlapsRange(event, dayStart, dayEnd));
 }
 
-function highlightedEventIds(events, activeView, selectedDate) {
+function highlightedEventIds(events, selectedDate) {
   if (events.length === 0) {
     return new Set();
   }
 
-  if (activeView === 'timeGridDay') {
-    return new Set(eventsForDay(events, selectedDate).map((event) => event.id));
-  }
-
-  const today = startOfDay(new Date());
-  const tomorrow = addDays(today, 1);
-  const todaysEvents = eventsForDay(events, today);
-
-  if (todaysEvents.length > 0) {
-    return new Set(todaysEvents.map((event) => event.id));
-  }
-
-  const tomorrowsEvents = eventsForDay(events, tomorrow);
-
-  if (tomorrowsEvents.length > 0) {
-    return new Set(tomorrowsEvents.map((event) => event.id));
-  }
-
-  const nextEvent = events.find((event) => parseEventDate(event.start) >= tomorrow);
-  return nextEvent ? new Set([nextEvent.id]) : new Set();
+  return new Set(eventsForDay(events, selectedDate).map((event) => event.id));
 }
 
 function isDaytime(date) {
@@ -306,8 +287,8 @@ function EventBoard({ events, activeView, selectedDate }) {
     '--event-rows': gridRows
   };
   const highlightedIds = useMemo(
-    () => highlightedEventIds(visibleEvents, activeView, selectedDate),
-    [activeView, selectedDate, visibleEvents]
+    () => highlightedEventIds(visibleEvents, selectedDate),
+    [selectedDate, visibleEvents]
   );
 
   return (
