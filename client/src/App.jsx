@@ -3,7 +3,7 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import esLocale from '@fullcalendar/core/locales/es';
-import { CalendarDays, Delete, Expand, Plus, RefreshCw, Volume2, X } from 'lucide-react';
+import { CalendarDays, Delete, Expand, Pencil, Plus, RefreshCw, Volume2, X } from 'lucide-react';
 
 const viewOptions = [
   { label: 'Dia', value: 'timeGridDay' },
@@ -115,6 +115,14 @@ function formatEventTime(event) {
   const end = event.end ? eventTimeFormatter.format(new Date(event.end)) : '';
 
   return end ? `${start} - ${end}` : start;
+}
+
+function eventDescription(event) {
+  return String(event.extendedProps?.description || '').trim();
+}
+
+function eventLocation(event) {
+  return String(event.extendedProps?.location || '').trim();
 }
 
 function formatEventDay(date, isToday) {
@@ -243,8 +251,16 @@ function importantEventMarkerCount(event) {
 }
 
 function isWorkCalendarEvent(event) {
-  const calendarName = String(event.extendedProps?.calendarName || '').toLocaleLowerCase('es-PR');
-  return calendarName.includes(workCalendarName);
+  const calendarLabel = [
+    event.extendedProps?.calendarName,
+    event.extendedProps?.calendarId
+  ].join(' ');
+  const normalizedCalendarLabel = calendarLabel
+    .toLocaleLowerCase('es-PR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  return normalizedCalendarLabel.includes(workCalendarName);
 }
 
 function eventAlertId(event) {
@@ -399,6 +415,8 @@ function AlertEventPanel({ event, onDismiss }) {
 }
 
 function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, selectedDate, onEditEvent }) {
+  const [actionEventId, setActionEventId] = useState(null);
+  const [selectedEventId, setSelectedEventId] = useState(null);
   const visibleEvents = useMemo(() => {
     const baseDate = startOfDay(selectedDate);
     const tomorrow = addDays(baseDate, 1);
@@ -440,13 +458,32 @@ function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, sele
     () => highlightedEventIds(visibleEvents, selectedDate),
     [selectedDate, visibleEvents]
   );
+  const selectedEvent = useMemo(
+    () => visibleEvents.find((event) => event.id === selectedEventId) || null,
+    [selectedEventId, visibleEvents]
+  );
+  const actionEvent = useMemo(
+    () => visibleEvents.find((event) => event.id === actionEventId) || null,
+    [actionEventId, visibleEvents]
+  );
   const boardClassName = [
     'event-board',
+    selectedEvent || actionEvent ? 'event-detail-board' : '',
     visibleEvents.length === 1 ? 'single-event-board' : '',
     gridLayout.compact ? 'compact-event-board' : '',
     gridLayout.dense ? 'dense-event-board' : '',
     gridLayout.scrollable ? 'scrollable-event-board' : ''
   ].filter(Boolean).join(' ');
+
+  useEffect(() => {
+    if (selectedEventId && !selectedEvent) {
+      setSelectedEventId(null);
+    }
+
+    if (actionEventId && !actionEvent) {
+      setActionEventId(null);
+    }
+  }, [actionEvent, actionEventId, selectedEvent, selectedEventId]);
 
   return (
     <section className={boardClassName} aria-label={title}>
@@ -463,6 +500,21 @@ function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, sele
         <div className="empty-board">
           <span>No hay eventos en esta vista.</span>
         </div>
+      ) : selectedEvent ? (
+        <EventDetail event={selectedEvent} onBack={() => setSelectedEventId(null)} />
+      ) : actionEvent ? (
+        <EventActionChoice
+          event={actionEvent}
+          onCancel={() => setActionEventId(null)}
+          onEdit={() => {
+            setActionEventId(null);
+            onEditEvent(actionEvent);
+          }}
+          onViewNotes={() => {
+            setActionEventId(null);
+            setSelectedEventId(actionEvent.id);
+          }}
+        />
       ) : (
         <div className="event-grid" style={eventGridStyle}>
           {visibleEvents.map((event) => {
@@ -475,15 +527,15 @@ function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, sele
               <article
                 className={`event-block ${isHighlighted ? 'highlighted-event' : ''} ${isEditable ? 'editable-event' : ''}`}
                 key={event.id}
-                onKeyDown={isEditable ? (keyEvent) => {
+                onKeyDown={(keyEvent) => {
                   if (keyEvent.key === 'Enter' || keyEvent.key === ' ') {
                     keyEvent.preventDefault();
-                    onEditEvent(event);
+                    setActionEventId(event.id);
                   }
-                } : undefined}
-                onClick={isEditable ? () => onEditEvent(event) : undefined}
-                role={isEditable ? 'button' : undefined}
-                tabIndex={isEditable ? 0 : undefined}
+                }}
+                onClick={() => setActionEventId(event.id)}
+                role="button"
+                tabIndex={0}
               >
                 <div className="event-accent" style={{ backgroundColor: event.backgroundColor }} />
                 <div className="event-head">
@@ -501,6 +553,81 @@ function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, sele
         </div>
       )}
     </section>
+  );
+}
+
+function EventActionChoice({ event, onCancel, onEdit, onViewNotes }) {
+  const eventDate = parseEventDate(event.start);
+  const isEditable = event.extendedProps?.editable && event.extendedProps?.eventUrl;
+
+  return (
+    <article className="event-choice">
+      <div className="event-accent" style={{ backgroundColor: event.backgroundColor }} />
+      <button className="event-choice-close" onClick={onCancel} title="Cerrar" type="button">
+        <X size={30} aria-hidden="true" />
+      </button>
+      <div className="event-choice-kicker">Que quieres hacer?</div>
+      <div className="event-choice-title">{event.title}</div>
+      <div className="event-choice-meta">
+        <span>{fullDateFormatter.format(eventDate)}</span>
+        <span>{formatEventTime(event)}</span>
+        <span>{event.extendedProps?.calendarName}</span>
+      </div>
+      <div className="event-choice-actions">
+        <button className="event-choice-button" disabled={!isEditable} onClick={onEdit} type="button">
+          <Pencil size={34} aria-hidden="true" />
+          <span>Editar</span>
+        </button>
+        <button className="event-choice-button primary-choice-button" onClick={onViewNotes} type="button">
+          <CalendarDays size={36} aria-hidden="true" />
+          <span>Ver notas</span>
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function EventDetail({ event, onBack }) {
+  const eventDate = parseEventDate(event.start);
+  const description = eventDescription(event);
+  const location = eventLocation(event);
+
+  return (
+    <article
+      className="event-detail"
+      onClick={onBack}
+      onKeyDown={(keyEvent) => {
+        if (keyEvent.key === 'Enter' || keyEvent.key === ' ' || keyEvent.key === 'Escape') {
+          keyEvent.preventDefault();
+          onBack();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <div className="event-accent" style={{ backgroundColor: event.backgroundColor }} />
+      <div className="event-detail-head">
+        <div>
+          <div className="event-detail-day">{fullDateFormatter.format(eventDate)}</div>
+          <div className="event-detail-time">{formatEventTime(event)}</div>
+        </div>
+        <div className="event-detail-calendar">{event.extendedProps?.calendarName}</div>
+      </div>
+      <div className="event-detail-title">{event.title}</div>
+
+      <div className="event-detail-fields">
+        {location && (
+          <div className="event-detail-field">
+            <span>Ubicacion</span>
+            <strong>{location}</strong>
+          </div>
+        )}
+        <div className="event-detail-field event-notes-field">
+          <span>Notas</span>
+          <strong>{description || 'Sin notas escritas.'}</strong>
+        </div>
+      </div>
+    </article>
   );
 }
 
