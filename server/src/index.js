@@ -63,10 +63,30 @@ function toIso(icalTime) {
   return icalTime.toJSDate().toISOString();
 }
 
+function toCalendarDate(icalTime) {
+  const month = String(icalTime.month).padStart(2, '0');
+  const day = String(icalTime.day).padStart(2, '0');
+  return `${icalTime.year}-${month}-${day}`;
+}
+
+function serializeEventTime(icalTime, allDay) {
+  return allDay ? toCalendarDate(icalTime) : toIso(icalTime);
+}
+
 function addDuration(icalTime, duration) {
   const end = icalTime.clone();
   end.addDuration(duration);
   return end;
+}
+
+function getEventDuration(event) {
+  if (event.duration) {
+    return event.duration;
+  }
+
+  return event.startDate?.isDate
+    ? ICAL.Duration.fromSeconds(24 * 60 * 60)
+    : ICAL.Duration.fromSeconds(60 * 60);
 }
 
 function isInRange(start, end, rangeStart, rangeEnd) {
@@ -116,7 +136,7 @@ function parseCalendarObject(calendarObject, calendar, calendarIndex, rangeStart
 
     return vevents.flatMap((vevent) => {
       const event = new ICAL.Event(vevent);
-      const duration = event.duration || ICAL.Duration.fromSeconds(60 * 60);
+      const duration = getEventDuration(event);
       const title = event.summary || 'Sin titulo';
       const calendarName = calendar.displayName || calendar.url || 'iCloud';
       const baseId = event.uid || calendarObject.url || `${title}-${event.startDate}`;
@@ -131,10 +151,10 @@ function parseCalendarObject(calendarObject, calendar, calendarIndex, rangeStart
         }
 
         return [{
-          id: `${baseId}-${toIso(event.startDate)}`,
+          id: `${baseId}-${serializeEventTime(event.startDate, allDay)}`,
           title,
-          start: eventStart.toISOString(),
-          end: eventEnd.toISOString(),
+          start: serializeEventTime(event.startDate, allDay),
+          end: serializeEventTime(event.endDate || addDuration(event.startDate, duration), allDay),
           allDay,
           backgroundColor: color,
           borderColor: color,
@@ -166,10 +186,10 @@ function parseCalendarObject(calendarObject, calendar, calendarIndex, rangeStart
 
         if (isInRange(occurrenceStart, occurrenceEnd, rangeStart, rangeEnd)) {
           occurrences.push({
-            id: `${baseId}-${toIso(next)}`,
+            id: `${baseId}-${serializeEventTime(next, allDay)}`,
             title,
-            start: occurrenceStart.toISOString(),
-            end: occurrenceEnd.toISOString(),
+            start: serializeEventTime(next, allDay),
+            end: serializeEventTime(addDuration(next, duration), allDay),
             allDay,
             backgroundColor: color,
             borderColor: color,

@@ -127,6 +127,21 @@ function addDays(date, days) {
   return next;
 }
 
+function parseEventDate(value) {
+  if (typeof value !== 'string') {
+    return new Date(value);
+  }
+
+  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!dateOnlyMatch) {
+    return new Date(value);
+  }
+
+  const [, year, month, day] = dateOnlyMatch;
+  return new Date(Number(year), Number(month) - 1, Number(day));
+}
+
 function startOfWeek(date) {
   const next = startOfDay(date);
   next.setDate(next.getDate() - next.getDay());
@@ -150,8 +165,8 @@ function isSameDay(first, second) {
 }
 
 function eventOverlapsRange(event, rangeStart, rangeEnd) {
-  const start = new Date(event.start);
-  const end = new Date(event.end || event.start);
+  const start = parseEventDate(event.start);
+  const end = event.end ? parseEventDate(event.end) : addDays(start, event.allDay ? 1 : 0);
   return start < rangeEnd && end > rangeStart;
 }
 
@@ -228,7 +243,7 @@ function EventBoard({ events, activeView, selectedDate }) {
 
     const filteredEvents = events
       .filter((event) => eventOverlapsRange(event, rangeStart, rangeEnd))
-      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+      .sort((a, b) => parseEventDate(a.start).getTime() - parseEventDate(b.start).getTime());
 
     return {
       visibleEvents: filteredEvents.slice(0, maxVisibleEvents),
@@ -276,7 +291,7 @@ function EventBoard({ events, activeView, selectedDate }) {
       ) : (
         <div className="event-grid" style={eventGridStyle}>
           {visibleEvents.map((event) => {
-            const eventDate = new Date(event.start);
+            const eventDate = parseEventDate(event.start);
             const isToday = isSameDay(eventDate, new Date());
 
             return (
@@ -326,7 +341,7 @@ function MiniCalendar({ events, selectedDate, onSelectDate }) {
     });
 
     events.forEach((event) => {
-      const eventMonth = startOfMonth(new Date(event.start));
+      const eventMonth = startOfMonth(parseEventDate(event.start));
       monthsByKey.set(eventMonth.toISOString(), eventMonth);
     });
 
