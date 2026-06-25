@@ -651,7 +651,7 @@ h1 {
 
 .add-event-layout {
   display: grid;
-  grid-template-columns: minmax(250px, 0.78fr) minmax(330px, 0.96fr) minmax(430px, 1.26fr);
+  grid-template-columns: minmax(330px, 0.92fr) minmax(330px, 0.9fr) minmax(430px, 1.18fr);
   gap: 20px;
   min-height: 0;
   padding: 20px 26px 26px;
@@ -677,7 +677,7 @@ h1 {
   flex-direction: column;
   gap: 10px;
   min-height: 0;
-  max-height: 260px;
+  max-height: 300px;
   overflow-y: auto;
   padding-right: 6px;
   -webkit-overflow-scrolling: touch;
@@ -687,16 +687,22 @@ h1 {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 58px;
-  padding: 0 16px;
+  min-height: 64px;
+  padding: 0 18px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   color: #243044;
   background: #ffffff;
   cursor: pointer;
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 850;
+  line-height: 1.1;
   text-align: left;
+}
+
+.calendar-choice span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .selected-calendar-choice {
@@ -865,11 +871,24 @@ h1 {
 }
 
 .keyboard-actions {
-  grid-template-columns: 2fr 1fr 1.3fr;
+  grid-template-columns: 1fr 2fr 1fr 1.3fr;
 }
 
 .wide-key {
   grid-column: auto;
+}
+
+.active-key {
+  border-color: #1f6feb;
+  background: #dbeafe;
+  color: #0f3d86;
+  box-shadow: inset 0 0 0 2px rgba(31, 111, 235, 0.22);
+}
+
+.night-mode .active-key {
+  border-color: #60a5fa;
+  background: #1e3a8a;
+  color: #f8fafc;
 }
 
 .modal-error {

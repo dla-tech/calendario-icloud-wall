@@ -500,28 +500,37 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
   const [calendarId, setCalendarId] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState(() => startOfDay(initialDate));
+  const [isCapsLocked, setIsCapsLocked] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
-  const pickerStartMonth = useMemo(() => addMonths(startOfMonth(new Date()), -6), []);
+  const wasOpenRef = useRef(false);
+  const pickerStartMonth = useMemo(() => startOfMonth(new Date()), []);
   const pickerMonths = useMemo(() => (
-    Array.from({ length: 73 }, (_, index) => addMonths(pickerStartMonth, index))
+    Array.from({ length: 96 }, (_, index) => addMonths(pickerStartMonth, index))
   ), [pickerStartMonth]);
   const selectedCalendar = calendars.find((calendar) => calendar.id === calendarId);
 
   useEffect(() => {
-    if (!open) {
-      return;
+    if (open && !wasOpenRef.current) {
+      setCalendarId((currentId) => (
+        calendars.some((calendar) => calendar.id === currentId)
+          ? currentId
+          : calendars[0]?.id || ''
+      ));
+      setEventDate(startOfDay(initialDate));
+      setEventTitle('');
+      setIsCapsLocked(true);
+      setError('');
     }
 
-    setCalendarId((currentId) => (
-      calendars.some((calendar) => calendar.id === currentId)
-        ? currentId
-        : calendars[0]?.id || ''
-    ));
-    setEventDate(startOfDay(initialDate));
-    setEventTitle('');
-    setError('');
+    wasOpenRef.current = open;
   }, [calendars, initialDate, open]);
+
+  useEffect(() => {
+    if (open && calendars.length > 0 && !calendars.some((calendar) => calendar.id === calendarId)) {
+      setCalendarId(calendars[0].id);
+    }
+  }, [calendarId, calendars, open]);
 
   if (!open) {
     return null;
@@ -623,14 +632,25 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
             <div className="touch-keyboard">
               {keyboardRows.map((row) => (
                 <div className="keyboard-row" key={row.join('')}>
-                  {row.map((key) => (
-                    <button className="keyboard-key" key={key} onClick={() => appendKey(key)} type="button">
-                      {key}
-                    </button>
-                  ))}
+                  {row.map((key) => {
+                    const displayKey = /^[A-ZÑ]$/.test(key) && !isCapsLocked ? key.toLowerCase() : key;
+
+                    return (
+                      <button className="keyboard-key" key={key} onClick={() => appendKey(displayKey)} type="button">
+                        {displayKey}
+                      </button>
+                    );
+                  })}
                 </div>
               ))}
               <div className="keyboard-row keyboard-actions">
+                <button
+                  className={`keyboard-key ${isCapsLocked ? 'active-key' : ''}`}
+                  onClick={() => setIsCapsLocked((current) => !current)}
+                  type="button"
+                >
+                  Caps
+                </button>
                 <button className="keyboard-key wide-key" onClick={() => appendKey(' ')} type="button">Espacio</button>
                 <button className="keyboard-key" onClick={deleteLast} title="Borrar" type="button">
                   <Delete size={24} aria-hidden="true" />
