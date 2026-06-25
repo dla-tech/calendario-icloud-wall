@@ -56,7 +56,7 @@ const keyboardRows = [
   ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
   ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Ñ'],
   ['Z', 'X', 'C', 'V', 'B', 'N', 'M', '.', ',', '-'],
-  ['/', '&', '@', '#', '$', '?', '!', ':', '(', ')']
+  ['🚨', '/', '&', '@', '#', '$', '?', '!', ':', '(']
 ];
 
 function buildDemoData() {
@@ -203,9 +203,14 @@ function parseEventDate(value) {
 }
 
 function eventSortValue(event) {
+  const start = parseEventDate(event.start);
+  const day = startOfDay(start).getTime();
+  const time = event.allDay ? 0 : start.getTime() - day;
+
   return [
+    String(day).padStart(14, '0'),
+    String(time).padStart(8, '0'),
     String(event.allDay ? 0 : 1),
-    String(parseEventDate(event.start).getTime()).padStart(14, '0'),
     (event.extendedProps?.calendarName || '').toLocaleLowerCase('es-PR'),
     (event.extendedProps?.calendarId || '').toLocaleLowerCase('es-PR'),
     (event.title || '').toLocaleLowerCase('es-PR'),
