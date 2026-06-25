@@ -59,8 +59,42 @@ function getRequestedRange(query) {
   return { start, end };
 }
 
+function assertText(value, fieldName) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    const error = new Error(`${fieldName} es requerido.`);
+    error.status = 400;
+    throw error;
+  }
+
+  return value.trim();
+}
+
+function assertCalendarDate(value) {
+  const date = assertText(value, 'La fecha');
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const error = new Error('La fecha debe usar el formato YYYY-MM-DD.');
+    error.status = 400;
+    throw error;
+  }
+
+  const parsed = new Date(`${date}T00:00:00Z`);
+
+  if (Number.isNaN(parsed.getTime())) {
+    const error = new Error('La fecha no es valida.');
+    error.status = 400;
+    throw error;
+  }
+
+  return date;
+}
+
 function toIso(icalTime) {
   return icalTime.toJSDate().toISOString();
+}
+
+function toIcsDate(date) {
+  return date.replaceAll('-', '');
 }
 
 function toCalendarDate(icalTime) {
@@ -77,6 +111,12 @@ function addDuration(icalTime, duration) {
   const end = icalTime.clone();
   end.addDuration(duration);
   return end;
+}
+
+function addCalendarDate(date, days) {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
 }
 
 function getEventDuration(event) {
@@ -105,6 +145,53 @@ function isEventCalendar(calendar) {
   const looksLikeReminders = calendarLabel.includes('reminder') || calendarLabel.includes('recordatorio');
 
   return supportsEvents && !looksLikeReminders;
+}
+
+function escapeIcsText(value) {
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll(';', '\\;')
+    .replaceAll(',', '\\,')
+    .replace(/\r?\n/g, '\\n');
+}
+
+function foldIcsLine(line) {
+  const limit = 73;
+  const chunks = [];
+  let remaining = line;
+
+  while (remaining.length > limit) {
+    chunks.push(remaining.slice(0, limit));
+    remaining = ` ${remaining.slice(limit)}`;
+  }
+
+  chunks.push(remaining);
+  return chunks.join('\r\n');
+}
+
+function createAllDayIcs({ title, date, uid }) {
+  const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const start = toIcsDate(date);
+  const end = toIcsDate(addCalendarDate(date, 1));
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Calendario iCloud Wall//ES',
+    'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${now}`,
+    `CREATED:${now}`,
+    `LAST-MODIFIED:${now}`,
+    `SUMMARY:${escapeIcsText(title)}`,
+    `DTSTART;VALUE=DATE:${start}`,
+    `DTEND;VALUE=DATE:${end}`,
+    'TRANSP:TRANSPARENT',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ];
+
+  return `${lines.map(foldIcsLine).join('\r\n')}\r\n`;
 }
 
 async function getCreateDAVClient() {
@@ -264,6 +351,65 @@ async function fetchICloudEvents(rangeStart, rangeEnd) {
   };
 }
 
+async function createICloudEvent({ calendarId, title, date }) {
+  assertConfig();
+
+  const targetCalendarId = assertText(calendarId, 'El calendario');
+  const eventTitle = assertText(title, 'El titulo');
+  const eventDate = assertCalendarDate(date);
+  const createDAVClient = await getCreateDAVClient();
+  const client = await createDAVClient({
+    serverUrl: process.env.CALDAV_SERVER,
+    credentials: {
+      username: process.env.ICLOUD_USERNAME,
+      password: process.env.ICLOUD_APP_PASSWORD
+    },
+    authMethod: 'Basic',
+    defaultAccountType: 'caldav'
+  });
+  const calendars = (await client.fetchCalendars()).filter(isEventCalendar);
+  const calendar = calendars.find((candidate) => candidate.url === targetCalendarId);
+
+  if (!calendar) {
+    const error = new Error('No se encontro ese calendario.');
+    error.status = 404;
+    throw error;
+  }
+
+  const uid = `${Date.now()}-${Math.random().toString(16).slice(2)}@calendario-icloud-wall`;
+  const calendarUrl = new URL(calendar.url, process.env.CALDAV_SERVER);
+
+  if (!calendarUrl.pathname.endsWith('/')) {
+    calendarUrl.pathname = `${calendarUrl.pathname}/`;
+  }
+
+  const objectUrl = new URL(`${uid}.ics`, calendarUrl.href).href;
+  const response = await fetch(objectUrl, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${process.env.ICLOUD_USERNAME}:${process.env.ICLOUD_APP_PASSWORD}`).toString('base64')}`,
+      'Content-Type': 'text/calendar; charset=utf-8',
+      'If-None-Match': '*'
+    },
+    body: createAllDayIcs({ title: eventTitle, date: eventDate, uid })
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => '');
+    const error = new Error(`No se pudo crear el evento en iCloud (${response.status}). ${message}`.trim());
+    error.status = response.status;
+    throw error;
+  }
+
+  return {
+    id: uid,
+    title: eventTitle,
+    date: eventDate,
+    calendarId: calendar.url,
+    calendarName: calendar.displayName || calendar.url || 'iCloud'
+  };
+}
+
 async function handleEvents(req, res, next) {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -278,7 +424,18 @@ async function handleEvents(req, res, next) {
   }
 }
 
+async function handleCreateEvent(req, res, next) {
+  try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const payload = await createICloudEvent(req.body || {});
+    res.status(201).json(payload);
+  } catch (error) {
+    next(error);
+  }
+}
+
 app.get(['/api/events', '/events'], handleEvents);
+app.post(['/api/events', '/events'], handleCreateEvent);
 
 app.get(['/api/health', '/health'], (_req, res) => {
   res.json({ ok: true, service: 'calendario-icloud-wall-server' });

@@ -3,7 +3,7 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import esLocale from '@fullcalendar/core/locales/es';
-import { CalendarDays, Expand, RefreshCw } from 'lucide-react';
+import { CalendarDays, Delete, Expand, Plus, RefreshCw, X } from 'lucide-react';
 
 const viewOptions = [
   { label: 'Dia', value: 'timeGridDay' },
@@ -46,6 +46,13 @@ const firstDayOfWeek = 1;
 const shortWeekdays = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
 const shortMonths = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const useDemoEvents = import.meta.env.VITE_USE_DEMO_EVENTS === 'true';
+const keyboardRows = [
+  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+  ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+  ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Ñ'],
+  ['Z', 'X', 'C', 'V', 'B', 'N', 'M', '.', ',', '-'],
+  ['/', '&', '@', '#', '$', '?', '!', ':', '(', ')']
+];
 
 function buildDemoData() {
   const today = startOfDay(new Date());
@@ -125,6 +132,13 @@ function addDays(date, days) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function toCalendarDateInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function parseEventDate(value) {
@@ -214,7 +228,7 @@ function isDaytime(date) {
   return hour >= 6 && hour < 18;
 }
 
-function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, syncError, onRefresh, onFullscreen }) {
+function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, syncError, onAddEvent, onRefresh, onFullscreen }) {
   const [now, setNow] = useState(new Date());
   const weekday = weekdayFormatter.format(now);
   const month = monthFormatter.format(now);
@@ -238,6 +252,9 @@ function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, 
       <div className="full-date">{fullDateFormatter.format(now)}</div>
 
       <div className="side-actions">
+        <button className="icon-button" onClick={onAddEvent} title="Agregar evento" type="button">
+          <Plus size={34} aria-hidden="true" />
+        </button>
         <button className="icon-button" onClick={onRefresh} title="Actualizar" type="button">
           <RefreshCw size={30} aria-hidden="true" />
         </button>
@@ -479,6 +496,165 @@ function CalendarList({ calendars }) {
   );
 }
 
+function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
+  const [calendarId, setCalendarId] = useState('');
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDate, setEventDate] = useState(() => startOfDay(initialDate));
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+  const pickerStartMonth = useMemo(() => addMonths(startOfMonth(new Date()), -6), []);
+  const pickerMonths = useMemo(() => (
+    Array.from({ length: 73 }, (_, index) => addMonths(pickerStartMonth, index))
+  ), [pickerStartMonth]);
+  const selectedCalendar = calendars.find((calendar) => calendar.id === calendarId);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setCalendarId((currentId) => (
+      calendars.some((calendar) => calendar.id === currentId)
+        ? currentId
+        : calendars[0]?.id || ''
+    ));
+    setEventDate(startOfDay(initialDate));
+    setEventTitle('');
+    setError('');
+  }, [calendars, initialDate, open]);
+
+  if (!open) {
+    return null;
+  }
+
+  const appendKey = (value) => setEventTitle((current) => `${current}${value}`);
+  const deleteLast = () => setEventTitle((current) => current.slice(0, -1));
+  const clearTitle = () => setEventTitle('');
+
+  const handleSubmit = async () => {
+    if (!calendarId || eventTitle.trim().length === 0 || isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError('');
+
+    try {
+      await onSubmit({
+        calendarId,
+        title: eventTitle.trim(),
+        date: toCalendarDateInput(eventDate)
+      });
+    } catch (submitError) {
+      setError(submitError.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="add-event-modal" aria-label="Agregar evento" role="dialog" aria-modal="true">
+        <div className="modal-heading">
+          <div>
+            <p className="eyebrow">Nuevo evento</p>
+            <h2>{fullDateFormatter.format(eventDate)}</h2>
+          </div>
+          <button className="icon-button modal-close" onClick={onClose} title="Cerrar" type="button">
+            <X size={30} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="add-event-layout">
+          <div className="modal-column">
+            <div className="field-label">Calendario</div>
+            <div className="calendar-choice-list">
+              {calendars.map((calendar) => (
+                <button
+                  className={calendar.id === calendarId ? 'calendar-choice selected-calendar-choice' : 'calendar-choice'}
+                  key={calendar.id}
+                  onClick={() => setCalendarId(calendar.id)}
+                  type="button"
+                >
+                  <span className="calendar-swatch" style={{ backgroundColor: calendar.color }} />
+                  <span>{calendar.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="field-label">Titulo</div>
+            <input
+              className="event-title-input"
+              onChange={(event) => setEventTitle(event.target.value)}
+              placeholder="Nombre del evento"
+              value={eventTitle}
+            />
+            <div className="selected-calendar-note">
+              {selectedCalendar ? selectedCalendar.name : 'Selecciona un calendario'}
+            </div>
+          </div>
+
+          <div className="modal-calendar-column">
+            <div className="field-label">Dia</div>
+            <div className="modal-month-scroll">
+              {pickerMonths.map((month) => (
+                <div className="modal-month" key={month.toISOString()}>
+                  <div className="mini-month-title">{monthFormatter.format(month)} {month.getFullYear()}</div>
+                  <FullCalendar
+                    plugins={[dayGridPlugin, interactionPlugin]}
+                    locale={esLocale}
+                    firstDay={firstDayOfWeek}
+                    initialView="dayGridMonth"
+                    initialDate={month}
+                    dateClick={(info) => setEventDate(info.date)}
+                    dayCellClassNames={(info) => (isSameDay(info.date, eventDate) ? ['selected-mini-day'] : [])}
+                    headerToolbar={false}
+                    height="auto"
+                    fixedWeekCount={false}
+                    showNonCurrentDates={false}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="keyboard-column">
+            <div className="field-label">Teclado</div>
+            <div className="touch-keyboard">
+              {keyboardRows.map((row) => (
+                <div className="keyboard-row" key={row.join('')}>
+                  {row.map((key) => (
+                    <button className="keyboard-key" key={key} onClick={() => appendKey(key)} type="button">
+                      {key}
+                    </button>
+                  ))}
+                </div>
+              ))}
+              <div className="keyboard-row keyboard-actions">
+                <button className="keyboard-key wide-key" onClick={() => appendKey(' ')} type="button">Espacio</button>
+                <button className="keyboard-key" onClick={deleteLast} title="Borrar" type="button">
+                  <Delete size={24} aria-hidden="true" />
+                </button>
+                <button className="keyboard-key" onClick={clearTitle} type="button">Limpiar</button>
+              </div>
+            </div>
+
+            {error && <div className="modal-error">{error}</div>}
+            <button
+              className="add-submit-button"
+              disabled={!calendarId || eventTitle.trim().length === 0 || isSaving}
+              onClick={handleSubmit}
+              type="button"
+            >
+              {isSaving ? 'Agregando...' : 'Agregar'}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const [events, setEvents] = useState(() => (useDemoEvents ? demoData.events : []));
   const [calendars, setCalendars] = useState(() => (useDemoEvents ? demoData.calendars : []));
@@ -487,6 +663,7 @@ function App() {
   const [status, setStatus] = useState(useDemoEvents ? 'Modo demo activo' : 'Cargando eventos de iCloud...');
   const [syncError, setSyncError] = useState('');
   const [isLightMode, setIsLightMode] = useState(() => isDaytime(new Date()));
+  const [isAddEventOpen, setIsAddEventOpen] = useState(false);
   const hasRealDataRef = useRef(false);
   const isFetchingRef = useRef(false);
 
@@ -569,6 +746,28 @@ function App() {
     }
   };
 
+  const createEvent = async ({ calendarId, title, date }) => {
+    setStatus('Agregando evento...');
+    setSyncError('');
+
+    const response = await fetch('/api/events', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ calendarId, title, date })
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(payload.error || 'No se pudo agregar el evento.');
+    }
+
+    setSelectedDate(parseEventDate(date));
+    setIsAddEventOpen(false);
+    await fetchEvents();
+  };
+
   return (
     <main className={`wall-calendar ${isLightMode ? 'day-mode' : 'night-mode'}`}>
       <DateTimePanel
@@ -578,6 +777,7 @@ function App() {
         onSelectDate={setSelectedDate}
         status={status}
         syncError={syncError}
+        onAddEvent={() => setIsAddEventOpen(true)}
         onRefresh={fetchEvents}
         onFullscreen={requestFullscreen}
       />
@@ -600,6 +800,13 @@ function App() {
 
         <EventBoard events={events} activeView={activeView} selectedDate={selectedDate} />
       </section>
+      <AddEventModal
+        calendars={calendars}
+        initialDate={selectedDate}
+        onClose={() => setIsAddEventOpen(false)}
+        onSubmit={createEvent}
+        open={isAddEventOpen}
+      />
     </main>
   );
 }
