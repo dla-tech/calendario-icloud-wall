@@ -185,6 +185,30 @@ function highlightedEventIds(events, selectedDate) {
   return new Set(eventsForDay(events, selectedDate).map((event) => event.id));
 }
 
+function eventGridLayout(eventCount) {
+  if (eventCount <= 1) {
+    return { columns: 1, rows: 1, compact: false, dense: false, scrollable: false };
+  }
+
+  if (eventCount <= 4) {
+    return { columns: 2, rows: Math.ceil(eventCount / 2), compact: false, dense: false, scrollable: false };
+  }
+
+  if (eventCount <= 9) {
+    return { columns: 3, rows: Math.ceil(eventCount / 3), compact: eventCount > 8, dense: false, scrollable: false };
+  }
+
+  if (eventCount <= 16) {
+    return { columns: 4, rows: Math.ceil(eventCount / 4), compact: true, dense: false, scrollable: false };
+  }
+
+  if (eventCount <= 28) {
+    return { columns: 4, rows: Math.ceil(eventCount / 4), compact: true, dense: true, scrollable: false };
+  }
+
+  return { columns: 4, rows: 7, compact: true, dense: true, scrollable: true };
+}
+
 function isDaytime(date) {
   const hour = date.getHours();
   return hour >= 6 && hour < 18;
@@ -266,24 +290,25 @@ function EventBoard({ events, activeView, selectedDate }) {
     : activeView === 'timeGridWeek'
       ? 'Eventos de la semana'
       : 'Eventos del mes';
-  const isCompactBoard = activeView === 'dayGridMonth' || visibleEvents.length > 8;
-  const gridColumns = visibleEvents.length <= 1
-    ? 1
-    : visibleEvents.length <= 4
-      ? 2
-      : visibleEvents.length <= 12
-        ? 3
-        : 4;
+  const gridLayout = eventGridLayout(visibleEvents.length);
   const eventGridStyle = {
-    '--event-columns': gridColumns
+    '--event-columns': gridLayout.columns,
+    '--event-rows': gridLayout.rows
   };
   const highlightedIds = useMemo(
     () => highlightedEventIds(visibleEvents, selectedDate),
     [selectedDate, visibleEvents]
   );
+  const boardClassName = [
+    'event-board',
+    visibleEvents.length === 1 ? 'single-event-board' : '',
+    gridLayout.compact ? 'compact-event-board' : '',
+    gridLayout.dense ? 'dense-event-board' : '',
+    gridLayout.scrollable ? 'scrollable-event-board' : ''
+  ].filter(Boolean).join(' ');
 
   return (
-    <section className={`event-board ${isCompactBoard ? 'compact-event-board' : ''}`} aria-label={title}>
+    <section className={boardClassName} aria-label={title}>
       <div className="board-heading">
         <p className="eyebrow">Apple Calendar / iCloud</p>
         <h1>{title}</h1>

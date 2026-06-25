@@ -329,12 +329,12 @@ h1 {
 .event-grid {
   display: grid;
   grid-template-columns: repeat(var(--event-columns, 2), minmax(0, 1fr));
-  grid-auto-rows: minmax(178px, auto);
-  align-content: start;
+  grid-template-rows: repeat(var(--event-rows, 1), minmax(0, 1fr));
+  align-content: stretch;
   gap: 16px;
   min-height: 0;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: hidden;
   overscroll-behavior: contain;
   padding: 4px 12px 18px 4px;
   touch-action: pan-y;
@@ -352,7 +352,17 @@ h1 {
 
 .compact-event-board .event-grid {
   gap: 10px;
-  grid-auto-rows: minmax(126px, auto);
+}
+
+.dense-event-board .event-grid {
+  gap: 8px;
+}
+
+.scrollable-event-board .event-grid {
+  grid-template-rows: none;
+  grid-auto-rows: minmax(118px, auto);
+  align-content: start;
+  overflow-y: auto;
 }
 
 .event-block {
@@ -401,6 +411,14 @@ h1 {
   padding: 12px 14px 10px 24px;
 }
 
+.dense-event-board .event-block {
+  padding: 10px 12px 9px 22px;
+}
+
+.single-event-board .event-block {
+  padding: 34px 42px 32px 54px;
+}
+
 .event-accent {
   position: absolute;
   inset: 0 auto 0 0;
@@ -433,6 +451,14 @@ h1 {
   font-size: clamp(17px, 1.3vw, 24px);
 }
 
+.dense-event-board .event-day {
+  font-size: clamp(14px, 1vw, 19px);
+}
+
+.single-event-board .event-day {
+  font-size: clamp(42px, 3.3vw, 64px);
+}
+
 .event-time {
   color: #1f6feb;
   font-size: clamp(24px, 2vw, 36px);
@@ -444,6 +470,14 @@ h1 {
 
 .compact-event-board .event-time {
   font-size: clamp(16px, 1.2vw, 22px);
+}
+
+.dense-event-board .event-time {
+  font-size: clamp(13px, 0.95vw, 18px);
+}
+
+.single-event-board .event-time {
+  font-size: clamp(38px, 3vw, 58px);
 }
 
 .event-title {
@@ -461,6 +495,18 @@ h1 {
   margin-top: 6px;
   font-size: clamp(18px, 1.35vw, 25px);
   line-height: 1.05;
+}
+
+.dense-event-board .event-title {
+  margin-top: 4px;
+  font-size: clamp(15px, 1.05vw, 20px);
+  line-height: 1;
+}
+
+.single-event-board .event-title {
+  margin-top: 22px;
+  font-size: clamp(48px, 4vw, 82px);
+  line-height: 0.98;
 }
 
 .event-meta {
@@ -492,6 +538,25 @@ h1 {
 
 .compact-event-board .event-meta .event-calendar-name {
   font-size: 22px;
+}
+
+.dense-event-board .event-meta {
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.dense-event-board .event-meta .event-calendar-name {
+  font-size: 17px;
+}
+
+.single-event-board .event-meta {
+  margin-top: 22px;
+  font-size: 26px;
+}
+
+.single-event-board .event-meta .event-calendar-name {
+  font-size: 42px;
 }
 
 .empty-board {
