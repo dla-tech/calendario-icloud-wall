@@ -42,8 +42,8 @@ const syncTimeFormatter = new Intl.DateTimeFormat('es-PR', {
   second: '2-digit'
 });
 
+const firstDayOfWeek = 1;
 const shortWeekdays = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
-const miniWeekdays = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
 const shortMonths = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const useDemoEvents = import.meta.env.VITE_USE_DEMO_EVENTS === 'true';
 
@@ -144,7 +144,8 @@ function parseEventDate(value) {
 
 function startOfWeek(date) {
   const next = startOfDay(date);
-  next.setDate(next.getDate() - next.getDay());
+  const daysSinceWeekStart = (next.getDay() - firstDayOfWeek + 7) % 7;
+  next.setDate(next.getDate() - daysSinceWeekStart);
   return next;
 }
 
@@ -405,6 +406,7 @@ function MiniCalendar({ events, selectedDate, onSelectDate }) {
             <FullCalendar
               plugins={[dayGridPlugin, interactionPlugin]}
               locale={esLocale}
+              firstDay={firstDayOfWeek}
               initialView="dayGridMonth"
               initialDate={month}
               dateClick={(info) => onSelectDate(info.date)}
@@ -416,7 +418,6 @@ function MiniCalendar({ events, selectedDate, onSelectDate }) {
               height="auto"
               fixedWeekCount={false}
               showNonCurrentDates={false}
-              dayHeaderContent={(info) => miniWeekdays[info.date.getDay()]}
             />
           </div>
         ))}
