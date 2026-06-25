@@ -705,7 +705,7 @@ function useEventAlerts(events) {
     return audioContextRef.current;
   }, []);
 
-  const playBeep = useCallback(async () => {
+  const playBeep = useCallback(async (sound = 'siren') => {
     const audioContext = await ensureAudioContext();
 
     if (!audioContext || audioContext.state !== 'running') {
@@ -713,18 +713,31 @@ function useEventAlerts(events) {
     }
 
     const startsAt = audioContext.currentTime;
-    const tones = [880, 1320, 880, 1320];
+    const tones = sound === 'horn'
+      ? [
+          { frequency: 220, startsAfter: 0, duration: 0.42 },
+          { frequency: 220, startsAfter: 0.62, duration: 0.42 }
+        ]
+      : [
+          { frequency: 880, startsAfter: 0, duration: 0.18 },
+          { frequency: 1320, startsAfter: 0.28, duration: 0.18 },
+          { frequency: 880, startsAfter: 0.56, duration: 0.18 },
+          { frequency: 1320, startsAfter: 0.84, duration: 0.18 }
+        ];
 
-    tones.forEach((frequency, index) => {
+    tones.forEach(({ frequency, startsAfter, duration }) => {
       const oscillator = audioContext.createOscillator();
       const gain = audioContext.createGain();
-      const toneStartsAt = startsAt + (index * 0.28);
-      const toneEndsAt = toneStartsAt + 0.18;
+      const toneStartsAt = startsAt + startsAfter;
+      const toneEndsAt = toneStartsAt + duration;
 
-      oscillator.type = 'square';
+      oscillator.type = sound === 'horn' ? 'sawtooth' : 'square';
       oscillator.frequency.setValueAtTime(frequency, toneStartsAt);
+      if (sound === 'horn') {
+        oscillator.frequency.exponentialRampToValueAtTime(170, toneEndsAt);
+      }
       gain.gain.setValueAtTime(0.0001, toneStartsAt);
-      gain.gain.exponentialRampToValueAtTime(0.65, toneStartsAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(sound === 'horn' ? 0.8 : 0.65, toneStartsAt + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0001, toneEndsAt);
 
       oscillator.connect(gain);
@@ -764,7 +777,7 @@ function useEventAlerts(events) {
     setActiveAlertEvent(null);
   }, []);
 
-  const startAlertSequence = useCallback((alertKey, event = null) => {
+  const startAlertSequence = useCallback((alertKey, event = null, sound = 'siren') => {
     if (firedAlertKeysRef.current.has(alertKey) || activeAlertTimersRef.current.has(alertKey)) {
       return;
     }
@@ -775,7 +788,7 @@ function useEventAlerts(events) {
 
     let hasPlayed = false;
     const playOnce = async () => {
-      const didPlay = await playBeep();
+      const didPlay = await playBeep(sound);
 
       if (didPlay && !hasPlayed) {
         hasPlayed = true;
@@ -850,7 +863,7 @@ function useEventAlerts(events) {
             target.setMinutes(target.getMinutes() - minutesBefore);
 
             if (isSameAlertWindow(now, target)) {
-              startAlertSequence(`${baseAlertId}:work-${minutesBefore}:${target.toISOString()}`, event);
+              startAlertSequence(`${baseAlertId}:work-${minutesBefore}:${target.toISOString()}`, event, 'horn');
             }
           });
         } else if (importantEventMarkerCount(event) >= 2) {
