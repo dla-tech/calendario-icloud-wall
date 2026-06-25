@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
@@ -14,6 +14,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 app.use(cors());
 app.use(express.json());
@@ -73,6 +74,15 @@ function isInRange(start, end, rangeStart, rangeEnd) {
 function calendarColor(calendar, index) {
   const palette = ['#2563eb', '#16a34a', '#f97316', '#db2777', '#7c3aed', '#0891b2'];
   return calendar.calendarColor || calendar.color || palette[index % palette.length];
+}
+
+function isEventCalendar(calendar) {
+  const components = Array.isArray(calendar.components) ? calendar.components : [];
+  const supportsEvents = components.length === 0 || components.includes('VEVENT');
+  const calendarLabel = `${calendar.displayName || ''} ${calendar.url || ''}`.toLowerCase();
+  const looksLikeReminders = calendarLabel.includes('reminder') || calendarLabel.includes('recordatorio');
+
+  return supportsEvents && !looksLikeReminders;
 }
 
 function parseCalendarObject(calendarObject, calendar, calendarIndex, rangeStart, rangeEnd) {
@@ -179,15 +189,9 @@ async function fetchICloudEvents(rangeStart, rangeEnd) {
     defaultAccountType: 'caldav'
   });
 
-  const calendars = await client.fetchCalendars();
+  const calendars = (await client.fetchCalendars()).filter(isEventCalendar);
 
-  const calendarPayload = calendars.map((calendar, index) => ({
-    id: calendar.url,
-    name: calendar.displayName || `Calendario ${index + 1}`,
-    color: calendarColor(calendar, index)
-  }));
-
-  const nestedEvents = await Promise.all(
+  const calendarResults = await Promise.all(
     calendars.map(async (calendar, index) => {
       const objects = await client.fetchCalendarObjects({
         calendar,
@@ -197,32 +201,47 @@ async function fetchICloudEvents(rangeStart, rangeEnd) {
         }
       });
 
-      return objects.flatMap((object) => parseCalendarObject(object, calendar, index, rangeStart, rangeEnd));
+      const events = objects.flatMap((object) => parseCalendarObject(object, calendar, index, rangeStart, rangeEnd));
+
+      return {
+        calendar: {
+          id: calendar.url,
+          name: calendar.displayName || `Calendario ${index + 1}`,
+          color: calendarColor(calendar, index)
+        },
+        events
+      };
     })
   );
 
-  const events = nestedEvents
-    .flat()
+  const events = calendarResults
+    .flatMap((result) => result.events)
     .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
   return {
-    calendars: calendarPayload,
+    calendars: calendarResults.map((result) => result.calendar),
     events,
     fetchedAt: new Date().toISOString()
   };
 }
 
-app.get('/api/events', async (req, res, next) => {
+async function handleEvents(req, res, next) {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
     const { start, end } = getRequestedRange(req.query);
     const payload = await fetchICloudEvents(start, end);
     res.json(payload);
   } catch (error) {
     next(error);
   }
-});
+}
 
-app.get('/api/health', (_req, res) => {
+app.get(['/api/events', '/events'], handleEvents);
+
+app.get(['/api/health', '/health'], (_req, res) => {
   res.json({ ok: true, service: 'calendario-icloud-wall-server' });
 });
 
@@ -234,6 +253,10 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-app.listen(port, () => {
-  console.log(`Servidor listo en http://localhost:${port}`);
-});
+if (isDirectRun) {
+  app.listen(port, () => {
+    console.log(`Servidor listo en http://127.0.0.1:${port}`);
+  });
+}
+
+export default app;

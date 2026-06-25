@@ -29,12 +29,35 @@ ICLOUD_USERNAME=tu-correo@icloud.com
 ICLOUD_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
 CALDAV_SERVER=https://caldav.icloud.com
 PORT=4000
-VITE_API_BASE_URL=
+VITE_USE_DEMO_EVENTS=false
 ```
 
 Las credenciales solo se usan en el servidor Express. El frontend nunca recibe la contrasena de iCloud.
 
-`VITE_API_BASE_URL` puede quedarse vacio cuando corres client y server juntos con `npm run dev`. Si despliegas el backend en otro dominio, pon ahi la URL publica del server, por ejemplo `https://tu-api.vercel.app`.
+`VITE_USE_DEMO_EVENTS=false` mantiene la app usando solo eventos reales. Cambialo a `true` solo si quieres abrir la app en modo demo o mostrar datos demo cuando el backend no este disponible y todavia no haya datos reales cargados.
+
+## Despliegue en Vercel
+
+Selecciona la raiz del repositorio como Root Directory en Vercel. No selecciones `client`.
+
+Configuracion esperada en Vercel:
+
+- Root Directory: `./`
+- Build Command: `npm run build`
+- Output Directory: `client/dist`
+- Install Command: `npm install`
+
+El archivo `vercel.json` de la raiz ya define esos valores, publica el build de Vite desde `client/dist` y redirige `/api/*` al handler serverless de Express.
+
+Agrega estas Environment Variables en Vercel:
+
+```bash
+ICLOUD_USERNAME=tu-correo@icloud.com
+ICLOUD_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+CALDAV_SERVER=https://caldav.icloud.com
+```
+
+El frontend llama siempre a `/api/events` desde el mismo dominio del despliegue. No necesitas configurar URLs publicas, dominios separados ni variables `VITE_*` para la API.
 
 ## Crear una contrasena especifica de app en Apple ID
 
@@ -57,10 +80,10 @@ npm run dev
 
 Esto inicia:
 
-- Server Express: `http://localhost:4000`
-- Client Vite: `http://localhost:5173`
+- Server Express: `http://127.0.0.1:4000`
+- Client Vite: `http://127.0.0.1:5173`
 
-Abre `http://localhost:5173` en la iMac.
+Abre `http://127.0.0.1:5173` en la iMac.
 
 ## Pantalla completa en la iMac
 

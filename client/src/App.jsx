@@ -36,9 +36,16 @@ const eventTimeFormatter = new Intl.DateTimeFormat('es-PR', {
   minute: '2-digit'
 });
 
+const syncTimeFormatter = new Intl.DateTimeFormat('es-PR', {
+  hour: 'numeric',
+  minute: '2-digit',
+  second: '2-digit'
+});
+
 const shortWeekdays = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
+const miniWeekdays = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
 const shortMonths = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+const useDemoEvents = import.meta.env.VITE_USE_DEMO_EVENTS === 'true';
 
 function buildDemoData() {
   const today = startOfDay(new Date());
@@ -104,9 +111,8 @@ function formatEventDay(date, isToday) {
   const weekday = shortWeekdays[date.getDay()];
   const month = shortMonths[date.getMonth()];
   const day = date.getDate();
-  const year = String(date.getFullYear()).slice(-2);
 
-  return `${weekday}, ${month} ${day}/${year}`;
+  return `${weekday} ${day}, ${month}`;
 }
 
 function startOfDay(date) {
@@ -135,6 +141,10 @@ function nextMonth(date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 1);
 }
 
+function addMonths(date, months) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
 function isSameDay(first, second) {
   return startOfDay(first).getTime() === startOfDay(second).getTime();
 }
@@ -142,10 +152,15 @@ function isSameDay(first, second) {
 function eventOverlapsRange(event, rangeStart, rangeEnd) {
   const start = new Date(event.start);
   const end = new Date(event.end || event.start);
-  return start < rangeEnd && end >= rangeStart;
+  return start < rangeEnd && end > rangeStart;
 }
 
-function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, onRefresh, onFullscreen, isLoading }) {
+function isDaytime(date) {
+  const hour = date.getHours();
+  return hour >= 6 && hour < 18;
+}
+
+function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, syncError, onRefresh, onFullscreen }) {
   const [now, setNow] = useState(new Date());
   const weekday = weekdayFormatter.format(now);
   const month = monthFormatter.format(now);
@@ -170,7 +185,7 @@ function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, 
 
       <div className="side-actions">
         <button className="icon-button" onClick={onRefresh} title="Actualizar" type="button">
-          <RefreshCw size={30} className={isLoading ? 'spinning' : ''} aria-hidden="true" />
+          <RefreshCw size={30} aria-hidden="true" />
         </button>
         <button className="icon-button" onClick={onFullscreen} title="Pantalla completa" type="button">
           <Expand size={30} aria-hidden="true" />
@@ -180,12 +195,17 @@ function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, 
       <MiniCalendar events={events} selectedDate={selectedDate} onSelectDate={onSelectDate} />
       <CalendarList calendars={calendars} />
 
-      <div className="sync-status">{status}</div>
+      <div className="sync-status">
+        <div>{status}</div>
+        {syncError && <div className="sync-error">{syncError}</div>}
+      </div>
     </aside>
   );
 }
 
 function EventBoard({ events, activeView, selectedDate }) {
+  const maxVisibleEvents = 24;
+
   const { visibleEvents, hiddenCount } = useMemo(() => {
     const baseDate = startOfDay(selectedDate);
     const tomorrow = addDays(baseDate, 1);
@@ -211,21 +231,34 @@ function EventBoard({ events, activeView, selectedDate }) {
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
     return {
-      visibleEvents: filteredEvents.slice(0, 8),
-      hiddenCount: Math.max(filteredEvents.length - 8, 0)
+      visibleEvents: filteredEvents.slice(0, maxVisibleEvents),
+      hiddenCount: Math.max(filteredEvents.length - maxVisibleEvents, 0)
     };
-  }, [activeView, events, selectedDate]);
+  }, [activeView, events, maxVisibleEvents, selectedDate]);
 
   const isSelectedToday = isSameDay(selectedDate, new Date());
   const titleDate = isSelectedToday ? 'hoy' : fullDateFormatter.format(selectedDate);
   const title = activeView === 'timeGridDay'
     ? `Eventos de ${titleDate}`
     : activeView === 'timeGridWeek'
-      ? `Semana de ${titleDate}`
-      : `Mes de ${titleDate}`;
+      ? 'Eventos de la semana'
+      : 'Eventos del mes';
+  const isCompactBoard = activeView === 'dayGridMonth' || visibleEvents.length > 8;
+  const gridColumns = visibleEvents.length <= 1
+    ? 1
+    : visibleEvents.length <= 4
+      ? 2
+      : visibleEvents.length <= 12
+        ? 3
+        : 4;
+  const gridRows = Math.max(1, Math.ceil(visibleEvents.length / gridColumns));
+  const eventGridStyle = {
+    '--event-columns': gridColumns,
+    '--event-rows': gridRows
+  };
 
   return (
-    <section className="event-board" aria-label={title}>
+    <section className={`event-board ${isCompactBoard ? 'compact-event-board' : ''}`} aria-label={title}>
       <div className="board-heading">
         <p className="eyebrow">Apple Calendar / iCloud</p>
         <h1>{title}</h1>
@@ -234,12 +267,14 @@ function EventBoard({ events, activeView, selectedDate }) {
         )}
       </div>
 
-      {visibleEvents.length === 0 ? (
+      {visibleEvents.length === 0 && activeView === 'timeGridDay' ? (
+        <div className="empty-board empty-board-blank" aria-hidden="true" />
+      ) : visibleEvents.length === 0 ? (
         <div className="empty-board">
           <span>No hay eventos en esta vista.</span>
         </div>
       ) : (
-        <div className="event-grid">
+        <div className="event-grid" style={eventGridStyle}>
           {visibleEvents.map((event) => {
             const eventDate = new Date(event.start);
             const isToday = isSameDay(eventDate, new Date());
@@ -254,7 +289,7 @@ function EventBoard({ events, activeView, selectedDate }) {
                 <div className="event-title">{event.title}</div>
                 <div className="event-meta">
                   <span>{isToday ? 'Hoy' : fullDateFormatter.format(eventDate)}</span>
-                  <span>{event.extendedProps?.calendarName}</span>
+                  <span className="event-calendar-name">{event.extendedProps?.calendarName}</span>
                 </div>
               </article>
             );
@@ -266,11 +301,11 @@ function EventBoard({ events, activeView, selectedDate }) {
 }
 
 function MiniCalendar({ events, selectedDate, onSelectDate }) {
-  const calendarRef = useRef(null);
-
-  useEffect(() => {
-    calendarRef.current?.getApi().gotoDate(selectedDate);
-  }, [selectedDate]);
+  const scrollContainerRef = useRef(null);
+  const currentMonthRef = useRef(null);
+  const resetTimerRef = useRef(null);
+  const currentMonth = useMemo(() => startOfMonth(new Date()), []);
+  const currentMonthTime = currentMonth.getTime();
 
   const miniEvents = useMemo(() => (
     events.map((event) => ({
@@ -283,28 +318,94 @@ function MiniCalendar({ events, selectedDate, onSelectDate }) {
     }))
   ), [events]);
 
+  const visibleMonths = useMemo(() => {
+    const monthsByKey = new Map();
+
+    Array.from({ length: 25 }, (_, index) => addMonths(currentMonth, index - 12)).forEach((month) => {
+      monthsByKey.set(month.toISOString(), month);
+    });
+
+    events.forEach((event) => {
+      const eventMonth = startOfMonth(new Date(event.start));
+      monthsByKey.set(eventMonth.toISOString(), eventMonth);
+    });
+
+    return Array.from(monthsByKey.values())
+      .sort((first, second) => first.getTime() - second.getTime());
+  }, [currentMonth, events]);
+
+  const scrollToCurrentMonth = useCallback((behavior = 'smooth') => {
+    if (!scrollContainerRef.current || !currentMonthRef.current) {
+      return;
+    }
+
+    const top = currentMonthRef.current.offsetTop - scrollContainerRef.current.offsetTop;
+
+    scrollContainerRef.current.scrollTo({
+      top,
+      behavior
+    });
+  }, []);
+
+  const scheduleScrollReset = useCallback(() => {
+    window.clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = window.setTimeout(() => {
+      scrollToCurrentMonth();
+    }, 30000);
+  }, [scrollToCurrentMonth]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      scrollToCurrentMonth('auto');
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(resetTimerRef.current);
+    };
+  }, [scrollToCurrentMonth]);
+
   return (
     <section className="sidebar-section mini-section">
       <div className="section-title">
         <CalendarDays size={22} aria-hidden="true" />
         <span>Mes</span>
       </div>
-      <FullCalendar
-        ref={calendarRef}
-        plugins={[dayGridPlugin, interactionPlugin]}
-        locale={esLocale}
-        initialView="dayGridMonth"
-        initialDate={selectedDate}
-        dateClick={(info) => onSelectDate(info.date)}
-        dayCellClassNames={(info) => (isSameDay(info.date, selectedDate) ? ['selected-mini-day'] : [])}
-        events={miniEvents}
-        eventDisplay="block"
-        dayMaxEvents={3}
-        headerToolbar={false}
-        height="auto"
-        fixedWeekCount={false}
-        dayHeaderFormat={{ weekday: 'narrow' }}
-      />
+      <div
+        className="mini-calendar-scroll"
+        onKeyDown={scheduleScrollReset}
+        onPointerDown={scheduleScrollReset}
+        onTouchStart={scheduleScrollReset}
+        onWheel={scheduleScrollReset}
+        ref={scrollContainerRef}
+        tabIndex={0}
+      >
+        {visibleMonths.map((month) => (
+          <div
+            className="mini-month"
+            key={month.toISOString()}
+            ref={month.getTime() === currentMonthTime ? currentMonthRef : undefined}
+          >
+            <div className="mini-month-title">{monthFormatter.format(month)} {month.getFullYear()}</div>
+            <FullCalendar
+              plugins={[dayGridPlugin, interactionPlugin]}
+              locale={esLocale}
+              initialView="dayGridMonth"
+              initialDate={month}
+              dateClick={(info) => onSelectDate(info.date)}
+              dayCellClassNames={(info) => (isSameDay(info.date, selectedDate) ? ['selected-mini-day'] : [])}
+              events={miniEvents}
+              eventDisplay="block"
+              dayMaxEvents={3}
+              headerToolbar={false}
+              height="auto"
+              fixedWeekCount={false}
+              showNonCurrentDates={false}
+              dayHeaderContent={(info) => miniWeekdays[info.date.getDay()]}
+            />
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -331,40 +432,57 @@ function CalendarList({ calendars }) {
 }
 
 function App() {
-  const [events, setEvents] = useState(demoData.events);
-  const [calendars, setCalendars] = useState(demoData.calendars);
-  const [activeView, setActiveView] = useState('timeGridDay');
+  const [events, setEvents] = useState(() => (useDemoEvents ? demoData.events : []));
+  const [calendars, setCalendars] = useState(() => (useDemoEvents ? demoData.calendars : []));
+  const [activeView, setActiveView] = useState('timeGridWeek');
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [status, setStatus] = useState('Modo demo: configura iCloud para ver tus eventos reales');
-  const [isLoading, setIsLoading] = useState(false);
+  const [status, setStatus] = useState(useDemoEvents ? 'Modo demo activo' : 'Cargando eventos de iCloud...');
+  const [syncError, setSyncError] = useState('');
+  const [isLightMode, setIsLightMode] = useState(() => isDaytime(new Date()));
+  const hasRealDataRef = useRef(false);
+  const isFetchingRef = useRef(false);
 
   const fetchEvents = useCallback(async () => {
-    setIsLoading(true);
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    isFetchingRef.current = true;
+    setSyncError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/events`);
+      const response = await fetch(`/api/events?t=${Date.now()}`, {
+        cache: 'no-store'
+      });
       const payload = await response.json();
 
       if (!response.ok) {
         throw new Error(payload.error || 'No se pudieron cargar los eventos.');
       }
 
-      const hasRealEvents = Array.isArray(payload.events) && payload.events.length > 0;
-      const hasCalendars = Array.isArray(payload.calendars) && payload.calendars.length > 0;
+      const nextEvents = Array.isArray(payload.events) ? payload.events : [];
+      const nextCalendars = Array.isArray(payload.calendars) ? payload.calendars : [];
 
-      setEvents(hasRealEvents ? payload.events : demoData.events);
-      setCalendars(hasCalendars ? payload.calendars : demoData.calendars);
+      hasRealDataRef.current = true;
+      setEvents(nextEvents);
+      setCalendars(nextCalendars);
       setStatus(
-        hasRealEvents
-          ? `Actualizado ${eventTimeFormatter.format(new Date(payload.fetchedAt || Date.now()))}`
-          : 'Sin eventos de iCloud por ahora: mostrando datos demo'
+        nextEvents.length > 0
+          ? `Actualizado ${syncTimeFormatter.format(new Date(payload.fetchedAt || Date.now()))}`
+          : 'Sin eventos de iCloud por ahora'
       );
-    } catch (error) {
-      setEvents(demoData.events);
-      setCalendars(demoData.calendars);
-      setStatus(`${error.message}. Mostrando datos demo`);
+    } catch (requestError) {
+      setSyncError(requestError.message);
+
+      if (useDemoEvents && !hasRealDataRef.current) {
+        setEvents(demoData.events);
+        setCalendars(demoData.calendars);
+        setStatus('Backend no disponible. Mostrando datos demo');
+      } else {
+        setStatus(hasRealDataRef.current ? 'Mostrando los ultimos eventos cargados' : 'No se pudieron cargar eventos reales');
+      }
     } finally {
-      setIsLoading(false);
+      isFetchingRef.current = false;
     }
   }, []);
 
@@ -386,6 +504,15 @@ function App() {
     return () => window.clearTimeout(resetTimer);
   }, [selectedDate]);
 
+  useEffect(() => {
+    const updateTheme = () => setIsLightMode(isDaytime(new Date()));
+    const timer = window.setInterval(updateTheme, 60000);
+
+    updateTheme();
+
+    return () => window.clearInterval(timer);
+  }, []);
+
   const requestFullscreen = async () => {
     if (!document.fullscreenElement) {
       await document.documentElement.requestFullscreen();
@@ -395,16 +522,16 @@ function App() {
   };
 
   return (
-    <main className="wall-calendar">
+    <main className={`wall-calendar ${isLightMode ? 'day-mode' : 'night-mode'}`}>
       <DateTimePanel
         calendars={calendars}
         events={events}
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
         status={status}
+        syncError={syncError}
         onRefresh={fetchEvents}
         onFullscreen={requestFullscreen}
-        isLoading={isLoading}
       />
 
       <section className="events-stage" aria-label="Eventos">

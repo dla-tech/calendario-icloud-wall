@@ -36,6 +36,13 @@ button {
     #edf2f7;
 }
 
+.wall-calendar.night-mode {
+  color: #e6edf7;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.9)),
+    #0f172a;
+}
+
 .date-panel {
   display: flex;
   flex-direction: column;
@@ -46,11 +53,38 @@ button {
   border-right: 1px solid #d8e0ea;
 }
 
+.night-mode .date-panel {
+  background: #111827;
+  border-right-color: #334155;
+}
+
 .date-stack {
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: end;
   gap: 22px;
+}
+
+.night-mode .date-number,
+.night-mode .date-words,
+.night-mode h1,
+.night-mode .event-day,
+.night-mode .event-title {
+  color: #f8fafc;
+}
+
+.night-mode .live-time,
+.night-mode .event-time,
+.night-mode .sync-status {
+  color: #60a5fa;
+}
+
+.night-mode .full-date,
+.night-mode .eyebrow,
+.night-mode .event-overflow-note,
+.night-mode .event-meta,
+.night-mode .empty-state {
+  color: #a8b5c8;
 }
 
 .date-number {
@@ -114,11 +148,28 @@ button {
   background: #f6f9fd;
 }
 
+.night-mode .icon-button {
+  border-color: #475569;
+  color: #e2e8f0;
+  background: #1e293b;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+}
+
+.night-mode .icon-button:hover {
+  background: #263449;
+}
+
 .sidebar-section {
   display: flex;
   flex-direction: column;
   gap: 14px;
   margin-top: 16px;
+}
+
+.night-mode .section-title,
+.night-mode .calendar-row,
+.night-mode .mini-month-title {
+  color: #dbeafe;
 }
 
 .section-title {
@@ -171,6 +222,15 @@ button {
   font-weight: 750;
 }
 
+.sync-error {
+  margin-top: 6px;
+  color: #b42318;
+}
+
+.night-mode .sync-error {
+  color: #fca5a5;
+}
+
 .events-stage {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -197,6 +257,12 @@ button {
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
 }
 
+.night-mode .segmented {
+  border-color: #475569;
+  background: #172033;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+
 .segmented button {
   min-height: 52px;
   padding: 0 22px;
@@ -209,10 +275,19 @@ button {
   font-weight: 850;
 }
 
+.night-mode .segmented button {
+  color: #cbd5e1;
+}
+
 .segmented button.active {
   color: #ffffff;
   background: #1f6feb;
   box-shadow: 0 10px 22px rgba(31, 111, 235, 0.24);
+}
+
+.night-mode .segmented button.active {
+  color: #ffffff;
+  background: #2563eb;
 }
 
 .event-board {
@@ -253,12 +328,24 @@ h1 {
 
 .event-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--event-columns, 2), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--event-rows, 4), minmax(0, 1fr));
   align-content: stretch;
   gap: 16px;
   min-height: 0;
   overflow: hidden;
+}
+
+.compact-event-board .board-heading {
+  margin-bottom: 14px;
+}
+
+.compact-event-board h1 {
+  font-size: clamp(42px, 3.4vw, 62px);
+}
+
+.compact-event-board .event-grid {
+  gap: 10px;
 }
 
 .event-block {
@@ -272,6 +359,17 @@ h1 {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.night-mode .event-block,
+.night-mode .empty-board {
+  border-color: #334155;
+  background: #172033;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+}
+
+.compact-event-board .event-block {
+  padding: 12px 14px 10px 24px;
 }
 
 .event-accent {
@@ -288,6 +386,11 @@ h1 {
   min-width: 0;
 }
 
+.compact-event-board .event-head {
+  grid-template-columns: minmax(72px, auto) 1fr;
+  gap: 10px;
+}
+
 .event-day {
   color: #111827;
   font-size: clamp(26px, 2.1vw, 40px);
@@ -297,6 +400,10 @@ h1 {
   text-transform: capitalize;
 }
 
+.compact-event-board .event-day {
+  font-size: clamp(17px, 1.3vw, 24px);
+}
+
 .event-time {
   color: #1f6feb;
   font-size: clamp(24px, 2vw, 36px);
@@ -304,6 +411,10 @@ h1 {
   line-height: 1;
   text-align: right;
   white-space: nowrap;
+}
+
+.compact-event-board .event-time {
+  font-size: clamp(16px, 1.2vw, 22px);
 }
 
 .event-title {
@@ -317,6 +428,12 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.compact-event-board .event-title {
+  margin-top: 6px;
+  font-size: clamp(18px, 1.35vw, 25px);
+  line-height: 1.05;
+}
+
 .event-meta {
   display: flex;
   justify-content: space-between;
@@ -326,6 +443,26 @@ h1 {
   font-size: 18px;
   font-weight: 750;
   text-transform: capitalize;
+}
+
+.event-meta .event-calendar-name {
+  color: #000000;
+  font-size: 30px;
+  font-weight: 950;
+}
+
+.night-mode .event-meta .event-calendar-name {
+  color: #cbd5e1;
+}
+
+.compact-event-board .event-meta {
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.compact-event-board .event-meta .event-calendar-name {
+  font-size: 22px;
 }
 
 .empty-board {
@@ -341,18 +478,44 @@ h1 {
   font-weight: 800;
 }
 
-.spinning {
-  animation: spin 0.9s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.empty-board-blank {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .mini-section {
   margin-top: 4px;
+  min-height: 0;
+}
+
+.mini-calendar-scroll {
+  max-height: min(36vh, 380px);
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.mini-month {
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #d7e0ea;
+}
+
+.night-mode .mini-month {
+  border-bottom-color: #334155;
+}
+
+.mini-month:last-child {
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+
+.mini-month-title {
+  margin-bottom: 8px;
+  color: #283244;
+  font-size: 18px;
+  font-weight: 850;
+  text-transform: capitalize;
 }
 
 .mini-section .fc {
@@ -360,8 +523,21 @@ h1 {
   color: #172033;
 }
 
+.night-mode .mini-section .fc {
+  --fc-border-color: #334155;
+  color: #e2e8f0;
+}
+
 .mini-section .fc .fc-daygrid-day {
   cursor: pointer;
+}
+
+.mini-section .fc .fc-day-disabled {
+  background: transparent;
+}
+
+.mini-section .fc .fc-day-disabled .fc-daygrid-day-frame {
+  visibility: hidden;
 }
 
 .mini-section .fc .fc-daygrid-day-number {
@@ -372,9 +548,18 @@ h1 {
   text-decoration: none;
 }
 
+.night-mode .mini-section .fc .fc-daygrid-day-number,
+.night-mode .mini-section .fc .fc-col-header-cell-cushion {
+  color: #cbd5e1;
+}
+
 .mini-section .fc .fc-col-header-cell {
   height: 30px;
   background: #f6f8fb;
+}
+
+.night-mode .mini-section .fc .fc-col-header-cell {
+  background: #1f2937;
 }
 
 .mini-section .fc .fc-col-header-cell-cushion {
@@ -393,9 +578,18 @@ h1 {
   background: #e8f1ff;
 }
 
+.night-mode .mini-section .fc .fc-day-today {
+  background: #1d4ed8;
+}
+
 .mini-section .fc .selected-mini-day {
   background: #dbeafe;
   box-shadow: inset 0 0 0 2px #1f6feb;
+}
+
+.night-mode .mini-section .fc .selected-mini-day {
+  background: #1e3a8a;
+  box-shadow: inset 0 0 0 2px #60a5fa;
 }
 
 .mini-section .fc .fc-daygrid-day-events {
