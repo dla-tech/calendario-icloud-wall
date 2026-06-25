@@ -43,6 +43,11 @@ const syncTimeFormatter = new Intl.DateTimeFormat('es-PR', {
 });
 
 const firstDayOfWeek = 1;
+const importantEventMarker = '🚨';
+const workCalendarName = 'trabajo';
+const alertWindowMs = 10 * 1000;
+const alertRepeatDurationMs = 70 * 1000;
+const alertRepeats = Math.floor(alertRepeatDurationMs / alertWindowMs) + 1;
 const shortWeekdays = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
 const shortMonths = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const useDemoEvents = import.meta.env.VITE_USE_DEMO_EVENTS === 'true';
@@ -197,6 +202,42 @@ function parseEventDate(value) {
   return new Date(Number(year), Number(month) - 1, Number(day));
 }
 
+function eventSortValue(event) {
+  return [
+    String(event.allDay ? 0 : 1),
+    String(parseEventDate(event.start).getTime()).padStart(14, '0'),
+    (event.extendedProps?.calendarName || '').toLocaleLowerCase('es-PR'),
+    (event.extendedProps?.calendarId || '').toLocaleLowerCase('es-PR'),
+    (event.title || '').toLocaleLowerCase('es-PR'),
+    String(event.id || '')
+  ].join('|');
+}
+
+function compareEvents(first, second) {
+  return eventSortValue(first).localeCompare(eventSortValue(second), 'es-PR', {
+    numeric: true,
+    sensitivity: 'base'
+  });
+}
+
+function isImportantEvent(event) {
+  return String(event.title || '').includes(importantEventMarker);
+}
+
+function isWorkCalendarEvent(event) {
+  const calendarName = String(event.extendedProps?.calendarName || '').toLocaleLowerCase('es-PR');
+  return calendarName.includes(workCalendarName);
+}
+
+function eventAlertId(event) {
+  return String(event.extendedProps?.uid || event.id || `${event.title}-${event.start}`);
+}
+
+function isSameAlertWindow(now, target) {
+  const delta = now.getTime() - target.getTime();
+  return delta >= 0 && delta < alertWindowMs;
+}
+
 function startOfWeek(date) {
   const next = startOfDay(date);
   const daysSinceWeekStart = (next.getDay() - firstDayOfWeek + 7) % 7;
@@ -338,7 +379,7 @@ function EventBoard({ events, activeView, selectedDate, onEditEvent }) {
 
     return events
       .filter((event) => eventOverlapsRange(event, rangeStart, rangeEnd))
-      .sort((a, b) => parseEventDate(a.start).getTime() - parseEventDate(b.start).getTime());
+      .sort(compareEvents);
   }, [activeView, events, selectedDate]);
 
   const isSelectedToday = isSameDay(selectedDate, new Date());
@@ -427,13 +468,16 @@ function MiniCalendar({ events, selectedDate, onSelectDate }) {
   const currentMonthTime = currentMonth.getTime();
 
   const miniEvents = useMemo(() => (
-    events.map((event) => ({
+    [...events].sort(compareEvents).map((event) => ({
       id: `mini-${event.id}`,
       title: '',
       start: event.start,
       allDay: true,
       backgroundColor: event.backgroundColor,
-      borderColor: event.backgroundColor
+      borderColor: event.backgroundColor,
+      extendedProps: {
+        sortKey: eventSortValue(event)
+      }
     }))
   ), [events]);
 
@@ -515,6 +559,7 @@ function MiniCalendar({ events, selectedDate, onSelectDate }) {
               dateClick={(info) => onSelectDate(info.date)}
               dayCellClassNames={(info) => (isSameDay(info.date, selectedDate) ? ['selected-mini-day'] : [])}
               events={miniEvents}
+              eventOrder="sortKey"
               eventDisplay="block"
               dayMaxEvents={3}
               headerToolbar={false}
@@ -591,6 +636,139 @@ function TimeWheel({ disabled, label, onChange, value }) {
       </div>
     </div>
   );
+}
+
+function useEventAlerts(events) {
+  const audioContextRef = useRef(null);
+  const firedAlertKeysRef = useRef(new Set());
+  const activeAlertTimersRef = useRef(new Map());
+
+  const ensureAudioContext = useCallback(() => {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContext) {
+      return null;
+    }
+
+    audioContextRef.current ??= new AudioContext();
+
+    if (audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume().catch(() => {});
+    }
+
+    return audioContextRef.current;
+  }, []);
+
+  const playBeep = useCallback(() => {
+    const audioContext = ensureAudioContext();
+
+    if (!audioContext || audioContext.state !== 'running') {
+      return;
+    }
+
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const startsAt = audioContext.currentTime;
+    const endsAt = startsAt + 0.22;
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(940, startsAt);
+    gain.gain.setValueAtTime(0.0001, startsAt);
+    gain.gain.exponentialRampToValueAtTime(0.2, startsAt + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, endsAt);
+
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start(startsAt);
+    oscillator.stop(endsAt);
+  }, [ensureAudioContext]);
+
+  const startAlertSequence = useCallback((alertKey) => {
+    if (firedAlertKeysRef.current.has(alertKey) || activeAlertTimersRef.current.has(alertKey)) {
+      return;
+    }
+
+    firedAlertKeysRef.current.add(alertKey);
+
+    const timers = Array.from({ length: alertRepeats }, (_, index) => (
+      window.setTimeout(playBeep, index * alertWindowMs)
+    ));
+
+    const cleanupTimer = window.setTimeout(() => {
+      activeAlertTimersRef.current.delete(alertKey);
+    }, alertRepeatDurationMs + alertWindowMs);
+
+    activeAlertTimersRef.current.set(alertKey, [...timers, cleanupTimer]);
+  }, [playBeep]);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      ensureAudioContext();
+    };
+
+    window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+  }, [ensureAudioContext]);
+
+  useEffect(() => {
+    const checkAlerts = () => {
+      const now = new Date();
+
+      events.forEach((event) => {
+        const baseAlertId = eventAlertId(event);
+
+        if (event.allDay) {
+          if (!isImportantEvent(event) || !eventOverlapsRange(event, startOfDay(now), addDays(startOfDay(now), 1))) {
+            return;
+          }
+
+          const target = startOfDay(now);
+          target.setHours(now.getHours(), 0, 0, 0);
+
+          if (now.getHours() >= 9 && isSameAlertWindow(now, target)) {
+            startAlertSequence(`${baseAlertId}:important-all-day:${target.toISOString()}`);
+          }
+
+          return;
+        }
+
+        const start = parseEventDate(event.start);
+
+        if (isImportantEvent(event) && isSameAlertWindow(now, start)) {
+          startAlertSequence(`${baseAlertId}:important:${start.toISOString()}`);
+        }
+
+        if (isWorkCalendarEvent(event)) {
+          [60, 30, 0].forEach((minutesBefore) => {
+            const target = new Date(start);
+            target.setMinutes(target.getMinutes() - minutesBefore);
+
+            if (isSameAlertWindow(now, target)) {
+              startAlertSequence(`${baseAlertId}:work-${minutesBefore}:${target.toISOString()}`);
+            }
+          });
+        }
+      });
+    };
+
+    checkAlerts();
+    const timer = window.setInterval(checkAlerts, alertWindowMs);
+
+    return () => window.clearInterval(timer);
+  }, [events, startAlertSequence]);
+
+  useEffect(() => () => {
+    activeAlertTimersRef.current.forEach((timers) => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    });
+    activeAlertTimersRef.current.clear();
+    audioContextRef.current?.close().catch(() => {});
+  }, []);
 }
 
 function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, onSubmit }) {
@@ -818,6 +996,8 @@ function App() {
   const [editingEvent, setEditingEvent] = useState(null);
   const hasRealDataRef = useRef(false);
   const isFetchingRef = useRef(false);
+
+  useEventAlerts(events);
 
   const fetchEvents = useCallback(async () => {
     if (isFetchingRef.current) {
