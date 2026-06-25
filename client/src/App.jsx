@@ -377,7 +377,28 @@ function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, 
   );
 }
 
-function EventBoard({ events, activeView, selectedDate, onEditEvent }) {
+function AlertEventPanel({ event, onDismiss }) {
+  if (!event) {
+    return null;
+  }
+
+  const eventDate = parseEventDate(event.start);
+
+  return (
+    <button className="active-alert-event" onClick={onDismiss} onPointerDown={onDismiss} type="button">
+      <div className="event-accent" style={{ backgroundColor: event.backgroundColor }} />
+      <div className="active-alert-label">Alerta sonando</div>
+      <div className="active-alert-time">{formatEventTime(event)}</div>
+      <div className="active-alert-title">{event.title}</div>
+      <div className="active-alert-meta">
+        <span>{fullDateFormatter.format(eventDate)}</span>
+        <span>{event.extendedProps?.calendarName}</span>
+      </div>
+    </button>
+  );
+}
+
+function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, selectedDate, onEditEvent }) {
   const visibleEvents = useMemo(() => {
     const baseDate = startOfDay(selectedDate);
     const tomorrow = addDays(baseDate, 1);
@@ -434,7 +455,9 @@ function EventBoard({ events, activeView, selectedDate, onEditEvent }) {
         <h1>{title}</h1>
       </div>
 
-      {visibleEvents.length === 0 && activeView === 'timeGridDay' ? (
+      {activeAlertEvent ? (
+        <AlertEventPanel event={activeAlertEvent} onDismiss={onDismissAlert} />
+      ) : visibleEvents.length === 0 && activeView === 'timeGridDay' ? (
         <div className="empty-board empty-board-blank" aria-hidden="true" />
       ) : visibleEvents.length === 0 ? (
         <div className="empty-board">
@@ -660,7 +683,9 @@ function TimeWheel({ disabled, label, onChange, value }) {
 }
 
 function useEventAlerts(events) {
+  const [activeAlertEvent, setActiveAlertEvent] = useState(null);
   const audioContextRef = useRef(null);
+  const activeOscillatorsRef = useRef(new Set());
   const firedAlertKeysRef = useRef(new Set());
   const activeAlertTimersRef = useRef(new Map());
 
@@ -704,6 +729,10 @@ function useEventAlerts(events) {
 
       oscillator.connect(gain);
       gain.connect(audioContext.destination);
+      activeOscillatorsRef.current.add(oscillator);
+      oscillator.onended = () => {
+        activeOscillatorsRef.current.delete(oscillator);
+      };
       oscillator.start(toneStartsAt);
       oscillator.stop(toneEndsAt);
     });
@@ -711,9 +740,37 @@ function useEventAlerts(events) {
     return true;
   }, [ensureAudioContext]);
 
-  const startAlertSequence = useCallback((alertKey) => {
+  const clearAlertSequence = useCallback((alertKey) => {
+    const timers = activeAlertTimersRef.current.get(alertKey) || [];
+    timers.forEach((timer) => window.clearTimeout(timer));
+    activeAlertTimersRef.current.delete(alertKey);
+    setActiveAlertEvent((current) => (current?.key === alertKey ? null : current));
+  }, []);
+
+  const dismissActiveAlert = useCallback(() => {
+    activeAlertTimersRef.current.forEach((timers, alertKey) => {
+      firedAlertKeysRef.current.add(alertKey);
+      timers.forEach((timer) => window.clearTimeout(timer));
+    });
+    activeOscillatorsRef.current.forEach((oscillator) => {
+      try {
+        oscillator.stop();
+      } catch {
+        // The oscillator may have already stopped naturally.
+      }
+    });
+    activeOscillatorsRef.current.clear();
+    activeAlertTimersRef.current.clear();
+    setActiveAlertEvent(null);
+  }, []);
+
+  const startAlertSequence = useCallback((alertKey, event = null) => {
     if (firedAlertKeysRef.current.has(alertKey) || activeAlertTimersRef.current.has(alertKey)) {
       return;
+    }
+
+    if (event) {
+      setActiveAlertEvent({ key: alertKey, event });
     }
 
     let hasPlayed = false;
@@ -735,11 +792,11 @@ function useEventAlerts(events) {
     ));
 
     const cleanupTimer = window.setTimeout(() => {
-      activeAlertTimersRef.current.delete(alertKey);
+      clearAlertSequence(alertKey);
     }, alertRepeatDurationMs + alertWindowMs);
 
     activeAlertTimersRef.current.set(alertKey, [...timers, cleanupTimer]);
-  }, [playBeep]);
+  }, [clearAlertSequence, playBeep]);
 
   useEffect(() => {
     const unlockAudio = () => {
@@ -775,7 +832,7 @@ function useEventAlerts(events) {
           target.setHours(now.getHours(), 0, 0, 0);
 
           if (now.getHours() >= 9 && isSameAlertWindow(now, target)) {
-            startAlertSequence(`${baseAlertId}:important-all-day:${target.toISOString()}`);
+            startAlertSequence(`${baseAlertId}:important-all-day:${target.toISOString()}`, event);
           }
 
           return;
@@ -784,7 +841,7 @@ function useEventAlerts(events) {
         const start = parseEventDate(event.start);
 
         if (isImportantEvent(event) && isSameAlertWindow(now, start)) {
-          startAlertSequence(`${baseAlertId}:important:${start.toISOString()}`);
+          startAlertSequence(`${baseAlertId}:important:${start.toISOString()}`, event);
         }
 
         if (isWorkCalendarEvent(event)) {
@@ -793,7 +850,7 @@ function useEventAlerts(events) {
             target.setMinutes(target.getMinutes() - minutesBefore);
 
             if (isSameAlertWindow(now, target)) {
-              startAlertSequence(`${baseAlertId}:work-${minutesBefore}:${target.toISOString()}`);
+              startAlertSequence(`${baseAlertId}:work-${minutesBefore}:${target.toISOString()}`, event);
             }
           });
         } else if (importantEventMarkerCount(event) >= 2) {
@@ -802,7 +859,7 @@ function useEventAlerts(events) {
             target.setMinutes(target.getMinutes() - minutesBefore);
 
             if (isSameAlertWindow(now, target)) {
-              startAlertSequence(`${baseAlertId}:double-siren-${minutesBefore}:${target.toISOString()}`);
+              startAlertSequence(`${baseAlertId}:double-siren-${minutesBefore}:${target.toISOString()}`, event);
             }
           });
         }
@@ -820,12 +877,27 @@ function useEventAlerts(events) {
       timers.forEach((timer) => window.clearTimeout(timer));
     });
     activeAlertTimersRef.current.clear();
+    activeOscillatorsRef.current.forEach((oscillator) => {
+      try {
+        oscillator.stop();
+      } catch {
+        // The oscillator may have already stopped naturally.
+      }
+    });
+    activeOscillatorsRef.current.clear();
+    setActiveAlertEvent(null);
     audioContextRef.current?.close().catch(() => {});
   }, []);
 
-  return useCallback(() => {
+  const testEventAlert = useCallback(() => {
     startAlertSequence(`manual:${Date.now()}`);
   }, [startAlertSequence]);
+
+  return useMemo(() => ({
+    activeAlertEvent: activeAlertEvent?.event || null,
+    dismissActiveAlert,
+    testEventAlert
+  }), [activeAlertEvent, dismissActiveAlert, testEventAlert]);
 }
 
 function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, onSubmit }) {
@@ -1054,7 +1126,7 @@ function App() {
   const hasRealDataRef = useRef(false);
   const isFetchingRef = useRef(false);
 
-  const testEventAlert = useEventAlerts(events);
+  const { activeAlertEvent, dismissActiveAlert, testEventAlert } = useEventAlerts(events);
 
   const fetchEvents = useCallback(async () => {
     if (isFetchingRef.current) {
@@ -1205,7 +1277,14 @@ function App() {
           </div>
         </header>
 
-        <EventBoard events={events} activeView={activeView} onEditEvent={openEditEvent} selectedDate={selectedDate} />
+        <EventBoard
+          activeAlertEvent={activeAlertEvent}
+          events={events}
+          activeView={activeView}
+          onDismissAlert={dismissActiveAlert}
+          onEditEvent={openEditEvent}
+          selectedDate={selectedDate}
+        />
       </section>
       <AddEventModal
         calendars={calendars}
