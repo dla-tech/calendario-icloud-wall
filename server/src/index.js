@@ -9,7 +9,7 @@ import ICAL from 'ical.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
-const { createDAVClient } = require('tsdav');
+let createDAVClientPromise;
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
@@ -85,6 +85,22 @@ function isEventCalendar(calendar) {
   const looksLikeReminders = calendarLabel.includes('reminder') || calendarLabel.includes('recordatorio');
 
   return supportsEvents && !looksLikeReminders;
+}
+
+async function getCreateDAVClient() {
+  createDAVClientPromise ??= import('tsdav')
+    .then((module) => module.createDAVClient || module.default?.createDAVClient)
+    .catch(() => require('tsdav').createDAVClient);
+
+  const createDAVClient = await createDAVClientPromise;
+
+  if (typeof createDAVClient !== 'function') {
+    const error = new Error('No se pudo cargar createDAVClient desde tsdav.');
+    error.status = 500;
+    throw error;
+  }
+
+  return createDAVClient;
 }
 
 function parseCalendarObject(calendarObject, calendar, calendarIndex, rangeStart, rangeEnd) {
@@ -181,6 +197,7 @@ function parseCalendarObject(calendarObject, calendar, calendarIndex, rangeStart
 async function fetchICloudEvents(rangeStart, rangeEnd) {
   assertConfig();
 
+  const createDAVClient = await getCreateDAVClient();
   const client = await createDAVClient({
     serverUrl: process.env.CALDAV_SERVER,
     credentials: {
