@@ -267,6 +267,10 @@ function eventAlertId(event) {
   return String(event.extendedProps?.uid || event.id || `${event.title}-${event.start}`);
 }
 
+function allDayMuteKey(event, date) {
+  return `${eventAlertId(event)}:${toCalendarDateInput(startOfDay(date))}`;
+}
+
 function isSameAlertWindow(now, target) {
   const delta = now.getTime() - target.getTime();
   return delta >= 0 && delta < alertRepeatDurationMs;
@@ -815,6 +819,7 @@ function useEventAlerts(events) {
   const activeOscillatorsRef = useRef(new Set());
   const firedAlertKeysRef = useRef(new Set());
   const activeAlertTimersRef = useRef(new Map());
+  const mutedAllDayAlertKeysRef = useRef(new Set());
 
   const ensureAudioContext = useCallback(async () => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -881,15 +886,21 @@ function useEventAlerts(events) {
   }, [ensureAudioContext]);
 
   const clearAlertSequence = useCallback((alertKey) => {
-    const timers = activeAlertTimersRef.current.get(alertKey) || [];
+    const { timers = [] } = activeAlertTimersRef.current.get(alertKey) || {};
     timers.forEach((timer) => window.clearTimeout(timer));
     activeAlertTimersRef.current.delete(alertKey);
     setActiveAlertEvent((current) => (current?.key === alertKey ? null : current));
   }, []);
 
   const dismissActiveAlert = useCallback(() => {
-    activeAlertTimersRef.current.forEach((timers, alertKey) => {
+    activeAlertTimersRef.current.forEach(({ event }, alertKey) => {
       firedAlertKeysRef.current.add(alertKey);
+
+      if (event?.allDay) {
+        mutedAllDayAlertKeysRef.current.add(allDayMuteKey(event, new Date()));
+      }
+    });
+    activeAlertTimersRef.current.forEach(({ timers }) => {
       timers.forEach((timer) => window.clearTimeout(timer));
     });
     activeOscillatorsRef.current.forEach((oscillator) => {
@@ -935,7 +946,7 @@ function useEventAlerts(events) {
       clearAlertSequence(alertKey);
     }, alertRepeatDurationMs + alertWindowMs);
 
-    activeAlertTimersRef.current.set(alertKey, [...timers, cleanupTimer]);
+    activeAlertTimersRef.current.set(alertKey, { event, timers: [...timers, cleanupTimer] });
   }, [clearAlertSequence, playBeep]);
 
   useEffect(() => {
@@ -965,6 +976,10 @@ function useEventAlerts(events) {
 
         if (event.allDay) {
           if (!isImportantEvent(event) || !eventOverlapsRange(event, startOfDay(now), addDays(startOfDay(now), 1))) {
+            return;
+          }
+
+          if (mutedAllDayAlertKeysRef.current.has(allDayMuteKey(event, now))) {
             return;
           }
 
@@ -1013,7 +1028,7 @@ function useEventAlerts(events) {
   }, [events, startAlertSequence]);
 
   useEffect(() => () => {
-    activeAlertTimersRef.current.forEach((timers) => {
+    activeAlertTimersRef.current.forEach(({ timers }) => {
       timers.forEach((timer) => window.clearTimeout(timer));
     });
     activeAlertTimersRef.current.clear();
