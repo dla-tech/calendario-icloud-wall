@@ -1,13 +1,15 @@
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
 import ICAL from 'ical.js';
-import { createDAVClient } from 'tsdav';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
+const { createDAVClient } = require('tsdav');
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
