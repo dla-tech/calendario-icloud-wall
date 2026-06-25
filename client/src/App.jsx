@@ -153,6 +153,22 @@ function addMinutesToTime(time, minutes) {
   return `${nextHour}:${nextMinute}`;
 }
 
+function timeFromEvent(event) {
+  if (!event || event.allDay) {
+    return '09:00';
+  }
+
+  const date = parseEventDate(event.start);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function applyTimeDigit(time, digit) {
+  const digits = `${time.replace(':', '')}${digit}`.slice(-4).padStart(4, '0');
+  const hour = Math.min(Number(digits.slice(0, 2)), 23);
+  const minute = Math.min(Number(digits.slice(2, 4)), 59);
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
 function parseEventDate(value) {
   if (typeof value !== 'string') {
     return new Date(value);
@@ -286,7 +302,7 @@ function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, 
   );
 }
 
-function EventBoard({ events, activeView, selectedDate }) {
+function EventBoard({ events, activeView, selectedDate, onEditEvent }) {
   const visibleEvents = useMemo(() => {
     const baseDate = startOfDay(selectedDate);
     const tomorrow = addDays(baseDate, 1);
@@ -355,9 +371,22 @@ function EventBoard({ events, activeView, selectedDate }) {
             const eventDate = parseEventDate(event.start);
             const isToday = isSameDay(eventDate, new Date());
             const isHighlighted = highlightedIds.has(event.id);
+            const isEditable = event.extendedProps?.editable && event.extendedProps?.eventUrl;
 
             return (
-              <article className={`event-block ${isHighlighted ? 'highlighted-event' : ''}`} key={event.id}>
+              <article
+                className={`event-block ${isHighlighted ? 'highlighted-event' : ''} ${isEditable ? 'editable-event' : ''}`}
+                key={event.id}
+                onKeyDown={isEditable ? (keyEvent) => {
+                  if (keyEvent.key === 'Enter' || keyEvent.key === ' ') {
+                    keyEvent.preventDefault();
+                    onEditEvent(event);
+                  }
+                } : undefined}
+                onClick={isEditable ? () => onEditEvent(event) : undefined}
+                role={isEditable ? 'button' : undefined}
+                tabIndex={isEditable ? 0 : undefined}
+              >
                 <div className="event-accent" style={{ backgroundColor: event.backgroundColor }} />
                 <div className="event-head">
                   <div className="event-day">{formatEventDay(eventDate, isToday)}</div>
@@ -508,11 +537,12 @@ function CalendarList({ calendars }) {
   );
 }
 
-function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
+function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, onSubmit }) {
   const [calendarId, setCalendarId] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState(() => startOfDay(initialDate));
   const [eventTime, setEventTime] = useState('09:00');
+  const [activeInput, setActiveInput] = useState('title');
   const [isCapsLocked, setIsCapsLocked] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -522,37 +552,66 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
     Array.from({ length: 96 }, (_, index) => addMonths(pickerStartMonth, index))
   ), [pickerStartMonth]);
   const selectedCalendar = calendars.find((calendar) => calendar.id === calendarId);
+  const isEditing = Boolean(editingEvent);
 
   useEffect(() => {
     if (open && !wasOpenRef.current) {
+      const editingCalendarId = editingEvent?.extendedProps?.calendarId;
       setCalendarId((currentId) => (
-        calendars.some((calendar) => calendar.id === currentId)
-          ? currentId
+        editingCalendarId || calendars.some((calendar) => calendar.id === currentId)
+          ? editingCalendarId || currentId
           : calendars[0]?.id || ''
       ));
-      setEventDate(startOfDay(initialDate));
-      setEventTime('09:00');
-      setEventTitle('');
+      setEventDate(editingEvent ? startOfDay(parseEventDate(editingEvent.start)) : startOfDay(initialDate));
+      setEventTime(timeFromEvent(editingEvent));
+      setEventTitle(editingEvent?.title || '');
+      setActiveInput('title');
       setIsCapsLocked(true);
       setError('');
     }
 
     wasOpenRef.current = open;
-  }, [calendars, initialDate, open]);
+  }, [calendars, editingEvent, initialDate, open]);
 
   useEffect(() => {
-    if (open && calendars.length > 0 && !calendars.some((calendar) => calendar.id === calendarId)) {
+    if (open && !isEditing && calendars.length > 0 && !calendars.some((calendar) => calendar.id === calendarId)) {
       setCalendarId(calendars[0].id);
     }
-  }, [calendarId, calendars, open]);
+  }, [calendarId, calendars, isEditing, open]);
 
   if (!open) {
     return null;
   }
 
-  const appendKey = (value) => setEventTitle((current) => `${current}${value}`);
-  const deleteLast = () => setEventTitle((current) => current.slice(0, -1));
-  const clearTitle = () => setEventTitle('');
+  const appendKey = (value) => {
+    if (activeInput === 'time') {
+      if (/^\d$/.test(value)) {
+        setEventTime((current) => applyTimeDigit(current, value));
+      }
+      return;
+    }
+
+    setEventTitle((current) => `${current}${value}`);
+  };
+  const deleteLast = () => {
+    if (activeInput === 'time') {
+      setEventTime((current) => {
+        const digits = current.replace(':', '').slice(0, -1).padStart(4, '0');
+        return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
+      });
+      return;
+    }
+
+    setEventTitle((current) => current.slice(0, -1));
+  };
+  const clearTitle = () => {
+    if (activeInput === 'time') {
+      setEventTime('00:00');
+      return;
+    }
+
+    setEventTitle('');
+  };
 
   const handleSubmit = async () => {
     if (!calendarId || eventTitle.trim().length === 0 || isSaving) {
@@ -565,6 +624,8 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
     try {
       await onSubmit({
         calendarId,
+        eventUrl: editingEvent?.extendedProps?.eventUrl || '',
+        uid: editingEvent?.extendedProps?.uid || '',
         title: eventTitle.trim(),
         date: toCalendarDateInput(eventDate),
         time: eventTime
@@ -578,10 +639,10 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="add-event-modal" aria-label="Agregar evento" role="dialog" aria-modal="true">
+      <section className="add-event-modal" aria-label={isEditing ? 'Editar evento' : 'Agregar evento'} role="dialog" aria-modal="true">
         <div className="modal-heading">
           <div>
-            <p className="eyebrow">Nuevo evento</p>
+            <p className="eyebrow">{isEditing ? 'Editar evento' : 'Nuevo evento'}</p>
             <h2>{fullDateFormatter.format(eventDate)}</h2>
           </div>
           <button className="icon-button modal-close" onClick={onClose} title="Cerrar" type="button">
@@ -596,6 +657,7 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
               {calendars.map((calendar) => (
                 <button
                   className={calendar.id === calendarId ? 'calendar-choice selected-calendar-choice' : 'calendar-choice'}
+                  disabled={isEditing}
                   key={calendar.id}
                   onClick={() => setCalendarId(calendar.id)}
                   type="button"
@@ -608,8 +670,9 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
 
             <div className="field-label">Titulo</div>
             <input
-              className="event-title-input"
+              className={`event-title-input ${activeInput === 'title' ? 'active-text-input' : ''}`}
               onChange={(event) => setEventTitle(event.target.value)}
+              onFocus={() => setActiveInput('title')}
               placeholder="Nombre del evento"
               value={eventTitle}
             />
@@ -625,7 +688,13 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
               <button className="time-adjust-button" onClick={() => setEventTime((current) => addMinutesToTime(current, -15))} type="button">
                 -15
               </button>
-              <div className="time-display">{formatTimeLabel(eventTime)}</div>
+              <button
+                className={`time-display ${activeInput === 'time' ? 'active-time-display' : ''}`}
+                onClick={() => setActiveInput('time')}
+                type="button"
+              >
+                {formatTimeLabel(eventTime)}
+              </button>
               <button className="time-adjust-button" onClick={() => setEventTime((current) => addMinutesToTime(current, 15))} type="button">
                 +15
               </button>
@@ -698,7 +767,7 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
               onClick={handleSubmit}
               type="button"
             >
-              {isSaving ? 'Agregando...' : 'Agregar'}
+              {isSaving ? (isEditing ? 'Guardando...' : 'Agregando...') : (isEditing ? 'Guardar' : 'Agregar')}
             </button>
           </div>
         </div>
@@ -716,6 +785,7 @@ function App() {
   const [syncError, setSyncError] = useState('');
   const [isLightMode, setIsLightMode] = useState(() => isDaytime(new Date()));
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
   const hasRealDataRef = useRef(false);
   const isFetchingRef = useRef(false);
 
@@ -798,16 +868,17 @@ function App() {
     }
   };
 
-  const createEvent = async ({ calendarId, title, date, time }) => {
-    setStatus('Agregando evento...');
+  const createEvent = async ({ calendarId, eventUrl, uid, title, date, time }) => {
+    const isEditingEvent = Boolean(eventUrl && uid);
+    setStatus(isEditingEvent ? 'Guardando evento...' : 'Agregando evento...');
     setSyncError('');
 
     const response = await fetch('/api/events', {
-      method: 'POST',
+      method: isEditingEvent ? 'PUT' : 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ calendarId, title, date, time })
+      body: JSON.stringify({ calendarId, eventUrl, uid, title, date, time })
     });
     const payload = await response.json().catch(() => ({}));
 
@@ -817,7 +888,23 @@ function App() {
 
     setSelectedDate(parseEventDate(date));
     setIsAddEventOpen(false);
+    setEditingEvent(null);
     await fetchEvents();
+  };
+
+  const closeEventModal = () => {
+    setIsAddEventOpen(false);
+    setEditingEvent(null);
+  };
+
+  const openAddEvent = () => {
+    setEditingEvent(null);
+    setIsAddEventOpen(true);
+  };
+
+  const openEditEvent = (event) => {
+    setEditingEvent(event);
+    setIsAddEventOpen(true);
   };
 
   return (
@@ -829,7 +916,7 @@ function App() {
         onSelectDate={setSelectedDate}
         status={status}
         syncError={syncError}
-        onAddEvent={() => setIsAddEventOpen(true)}
+        onAddEvent={openAddEvent}
         onRefresh={fetchEvents}
         onFullscreen={requestFullscreen}
       />
@@ -850,12 +937,13 @@ function App() {
           </div>
         </header>
 
-        <EventBoard events={events} activeView={activeView} selectedDate={selectedDate} />
+        <EventBoard events={events} activeView={activeView} onEditEvent={openEditEvent} selectedDate={selectedDate} />
       </section>
       <AddEventModal
         calendars={calendars}
+        editingEvent={editingEvent}
         initialDate={selectedDate}
-        onClose={() => setIsAddEventOpen(false)}
+        onClose={closeEventModal}
         onSubmit={createEvent}
         open={isAddEventOpen}
       />
