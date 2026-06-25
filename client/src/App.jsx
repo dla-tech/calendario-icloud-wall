@@ -683,21 +683,26 @@ function useEventAlerts(events) {
       return false;
     }
 
-    const oscillator = audioContext.createOscillator();
-    const gain = audioContext.createGain();
     const startsAt = audioContext.currentTime;
-    const endsAt = startsAt + 0.22;
+    const tones = [880, 1320, 880, 1320];
 
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(940, startsAt);
-    gain.gain.setValueAtTime(0.0001, startsAt);
-    gain.gain.exponentialRampToValueAtTime(0.2, startsAt + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, endsAt);
+    tones.forEach((frequency, index) => {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const toneStartsAt = startsAt + (index * 0.28);
+      const toneEndsAt = toneStartsAt + 0.18;
 
-    oscillator.connect(gain);
-    gain.connect(audioContext.destination);
-    oscillator.start(startsAt);
-    oscillator.stop(endsAt);
+      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(frequency, toneStartsAt);
+      gain.gain.setValueAtTime(0.0001, toneStartsAt);
+      gain.gain.exponentialRampToValueAtTime(0.65, toneStartsAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, toneEndsAt);
+
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start(toneStartsAt);
+      oscillator.stop(toneEndsAt);
+    });
 
     return true;
   }, [ensureAudioContext]);
@@ -717,10 +722,12 @@ function useEventAlerts(events) {
       }
     };
 
-    const timers = Array.from({ length: alertRepeats }, (_, index) => (
+    void playOnce();
+
+    const timers = Array.from({ length: alertRepeats - 1 }, (_, index) => (
       window.setTimeout(() => {
         void playOnce();
-      }, index * alertWindowMs)
+      }, (index + 1) * alertWindowMs)
     ));
 
     const cleanupTimer = window.setTimeout(() => {
