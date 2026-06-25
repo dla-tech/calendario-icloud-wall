@@ -238,6 +238,10 @@ function isImportantEvent(event) {
     || importantEventKeywords.some((keyword) => normalizedTitle.includes(keyword));
 }
 
+function importantEventMarkerCount(event) {
+  return String(event.title || '').split(importantEventMarker).length - 1;
+}
+
 function isWorkCalendarEvent(event) {
   const calendarName = String(event.extendedProps?.calendarName || '').toLocaleLowerCase('es-PR');
   return calendarName.includes(workCalendarName);
@@ -790,6 +794,15 @@ function useEventAlerts(events) {
 
             if (isSameAlertWindow(now, target)) {
               startAlertSequence(`${baseAlertId}:work-${minutesBefore}:${target.toISOString()}`);
+            }
+          });
+        } else if (importantEventMarkerCount(event) >= 2) {
+          [60, 30].forEach((minutesBefore) => {
+            const target = new Date(start);
+            target.setMinutes(target.getMinutes() - minutesBefore);
+
+            if (isSameAlertWindow(now, target)) {
+              startAlertSequence(`${baseAlertId}:double-siren-${minutesBefore}:${target.toISOString()}`);
             }
           });
         }
