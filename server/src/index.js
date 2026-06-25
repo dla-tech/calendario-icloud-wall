@@ -89,12 +89,40 @@ function assertCalendarDate(value) {
   return date;
 }
 
+function assertEventTime(value) {
+  if (value === undefined || value === null || value === '') {
+    return '';
+  }
+
+  const time = assertText(value, 'La hora');
+
+  if (!/^\d{2}:\d{2}$/.test(time)) {
+    const error = new Error('La hora debe usar el formato HH:mm.');
+    error.status = 400;
+    throw error;
+  }
+
+  const [hour, minute] = time.split(':').map(Number);
+
+  if (hour > 23 || minute > 59) {
+    const error = new Error('La hora no es valida.');
+    error.status = 400;
+    throw error;
+  }
+
+  return time;
+}
+
 function toIso(icalTime) {
   return icalTime.toJSDate().toISOString();
 }
 
 function toIcsDate(date) {
   return date.replaceAll('-', '');
+}
+
+function toIcsDateTime(date, time) {
+  return `${toIcsDate(date)}T${time.replace(':', '')}00`;
 }
 
 function toCalendarDate(icalTime) {
@@ -117,6 +145,16 @@ function addCalendarDate(date, days) {
   const parsed = new Date(`${date}T00:00:00Z`);
   parsed.setUTCDate(parsed.getUTCDate() + days);
   return parsed.toISOString().slice(0, 10);
+}
+
+function addTime(date, time, minutes) {
+  const parsed = new Date(`${date}T${time}:00Z`);
+  parsed.setUTCMinutes(parsed.getUTCMinutes() + minutes);
+
+  return {
+    date: parsed.toISOString().slice(0, 10),
+    time: parsed.toISOString().slice(11, 16)
+  };
 }
 
 function getEventDuration(event) {
@@ -187,6 +225,30 @@ function createAllDayIcs({ title, date, uid }) {
     `DTSTART;VALUE=DATE:${start}`,
     `DTEND;VALUE=DATE:${end}`,
     'TRANSP:TRANSPARENT',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ];
+
+  return `${lines.map(foldIcsLine).join('\r\n')}\r\n`;
+}
+
+function createTimedIcs({ title, date, time, uid }) {
+  const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const end = addTime(date, time, 60);
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Calendario iCloud Wall//ES',
+    'CALSCALE:GREGORIAN',
+    'X-WR-TIMEZONE:America/Puerto_Rico',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${now}`,
+    `CREATED:${now}`,
+    `LAST-MODIFIED:${now}`,
+    `SUMMARY:${escapeIcsText(title)}`,
+    `DTSTART;TZID=America/Puerto_Rico:${toIcsDateTime(date, time)}`,
+    `DTEND;TZID=America/Puerto_Rico:${toIcsDateTime(end.date, end.time)}`,
     'END:VEVENT',
     'END:VCALENDAR'
   ];
@@ -351,12 +413,13 @@ async function fetchICloudEvents(rangeStart, rangeEnd) {
   };
 }
 
-async function createICloudEvent({ calendarId, title, date }) {
+async function createICloudEvent({ calendarId, title, date, time }) {
   assertConfig();
 
   const targetCalendarId = assertText(calendarId, 'El calendario');
   const eventTitle = assertText(title, 'El titulo');
   const eventDate = assertCalendarDate(date);
+  const eventTime = assertEventTime(time);
   const createDAVClient = await getCreateDAVClient();
   const client = await createDAVClient({
     serverUrl: process.env.CALDAV_SERVER,
@@ -391,7 +454,9 @@ async function createICloudEvent({ calendarId, title, date }) {
       'Content-Type': 'text/calendar; charset=utf-8',
       'If-None-Match': '*'
     },
-    body: createAllDayIcs({ title: eventTitle, date: eventDate, uid })
+    body: eventTime
+      ? createTimedIcs({ title: eventTitle, date: eventDate, time: eventTime, uid })
+      : createAllDayIcs({ title: eventTitle, date: eventDate, uid })
   });
 
   if (!response.ok) {
@@ -405,6 +470,7 @@ async function createICloudEvent({ calendarId, title, date }) {
     id: uid,
     title: eventTitle,
     date: eventDate,
+    time: eventTime,
     calendarId: calendar.url,
     calendarName: calendar.displayName || calendar.url || 'iCloud'
   };

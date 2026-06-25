@@ -141,6 +141,18 @@ function toCalendarDateInput(date) {
   return `${year}-${month}-${day}`;
 }
 
+function formatTimeLabel(time) {
+  return eventTimeFormatter.format(new Date(`2000-01-01T${time}:00`));
+}
+
+function addMinutesToTime(time, minutes) {
+  const [hour, minute] = time.split(':').map(Number);
+  const totalMinutes = (((hour * 60 + minute + minutes) % 1440) + 1440) % 1440;
+  const nextHour = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
+  const nextMinute = String(totalMinutes % 60).padStart(2, '0');
+  return `${nextHour}:${nextMinute}`;
+}
+
 function parseEventDate(value) {
   if (typeof value !== 'string') {
     return new Date(value);
@@ -500,6 +512,7 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
   const [calendarId, setCalendarId] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState(() => startOfDay(initialDate));
+  const [eventTime, setEventTime] = useState('09:00');
   const [isCapsLocked, setIsCapsLocked] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -518,6 +531,7 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
           : calendars[0]?.id || ''
       ));
       setEventDate(startOfDay(initialDate));
+      setEventTime('09:00');
       setEventTitle('');
       setIsCapsLocked(true);
       setError('');
@@ -552,7 +566,8 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
       await onSubmit({
         calendarId,
         title: eventTitle.trim(),
-        date: toCalendarDateInput(eventDate)
+        date: toCalendarDateInput(eventDate),
+        time: eventTime
       });
     } catch (submitError) {
       setError(submitError.message);
@@ -600,6 +615,23 @@ function AddEventModal({ calendars, initialDate, open, onClose, onSubmit }) {
             />
             <div className="selected-calendar-note">
               {selectedCalendar ? selectedCalendar.name : 'Selecciona un calendario'}
+            </div>
+
+            <div className="field-label time-field-label">Hora</div>
+            <div className="time-picker">
+              <button className="time-adjust-button" onClick={() => setEventTime((current) => addMinutesToTime(current, -60))} type="button">
+                -1h
+              </button>
+              <button className="time-adjust-button" onClick={() => setEventTime((current) => addMinutesToTime(current, -15))} type="button">
+                -15
+              </button>
+              <div className="time-display">{formatTimeLabel(eventTime)}</div>
+              <button className="time-adjust-button" onClick={() => setEventTime((current) => addMinutesToTime(current, 15))} type="button">
+                +15
+              </button>
+              <button className="time-adjust-button" onClick={() => setEventTime((current) => addMinutesToTime(current, 60))} type="button">
+                +1h
+              </button>
             </div>
           </div>
 
@@ -766,7 +798,7 @@ function App() {
     }
   };
 
-  const createEvent = async ({ calendarId, title, date }) => {
+  const createEvent = async ({ calendarId, title, date, time }) => {
     setStatus('Agregando evento...');
     setSyncError('');
 
@@ -775,7 +807,7 @@ function App() {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ calendarId, title, date })
+      body: JSON.stringify({ calendarId, title, date, time })
     });
     const payload = await response.json().catch(() => ({}));
 
