@@ -171,6 +171,39 @@ function eventOverlapsRange(event, rangeStart, rangeEnd) {
   return start < rangeEnd && end > rangeStart;
 }
 
+function eventsForDay(events, date) {
+  const dayStart = startOfDay(date);
+  const dayEnd = addDays(dayStart, 1);
+  return events.filter((event) => eventOverlapsRange(event, dayStart, dayEnd));
+}
+
+function highlightedEventIds(events, activeView, selectedDate) {
+  if (events.length === 0) {
+    return new Set();
+  }
+
+  if (activeView === 'timeGridDay') {
+    return new Set(eventsForDay(events, selectedDate).map((event) => event.id));
+  }
+
+  const today = startOfDay(new Date());
+  const tomorrow = addDays(today, 1);
+  const todaysEvents = eventsForDay(events, today);
+
+  if (todaysEvents.length > 0) {
+    return new Set(todaysEvents.map((event) => event.id));
+  }
+
+  const tomorrowsEvents = eventsForDay(events, tomorrow);
+
+  if (tomorrowsEvents.length > 0) {
+    return new Set(tomorrowsEvents.map((event) => event.id));
+  }
+
+  const nextEvent = events.find((event) => parseEventDate(event.start) >= tomorrow);
+  return nextEvent ? new Set([nextEvent.id]) : new Set();
+}
+
 function isDaytime(date) {
   const hour = date.getHours();
   return hour >= 6 && hour < 18;
@@ -272,6 +305,10 @@ function EventBoard({ events, activeView, selectedDate }) {
     '--event-columns': gridColumns,
     '--event-rows': gridRows
   };
+  const highlightedIds = useMemo(
+    () => highlightedEventIds(visibleEvents, activeView, selectedDate),
+    [activeView, selectedDate, visibleEvents]
+  );
 
   return (
     <section className={`event-board ${isCompactBoard ? 'compact-event-board' : ''}`} aria-label={title}>
@@ -294,9 +331,10 @@ function EventBoard({ events, activeView, selectedDate }) {
           {visibleEvents.map((event) => {
             const eventDate = parseEventDate(event.start);
             const isToday = isSameDay(eventDate, new Date());
+            const isHighlighted = highlightedIds.has(event.id);
 
             return (
-              <article className="event-block" key={event.id}>
+              <article className={`event-block ${isHighlighted ? 'highlighted-event' : ''}`} key={event.id}>
                 <div className="event-accent" style={{ backgroundColor: event.backgroundColor }} />
                 <div className="event-head">
                   <div className="event-day">{formatEventDay(eventDate, isToday)}</div>
