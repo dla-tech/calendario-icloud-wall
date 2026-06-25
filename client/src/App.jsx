@@ -141,17 +141,9 @@ function toCalendarDateInput(date) {
   return `${year}-${month}-${day}`;
 }
 
-function formatTimeLabel(time) {
-  return eventTimeFormatter.format(new Date(`2000-01-01T${time}:00`));
-}
-
-function addMinutesToTime(time, minutes) {
-  const [hour, minute] = time.split(':').map(Number);
-  const totalMinutes = (((hour * 60 + minute + minutes) % 1440) + 1440) % 1440;
-  const nextHour = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
-  const nextMinute = String(totalMinutes % 60).padStart(2, '0');
-  return `${nextHour}:${nextMinute}`;
-}
+const hourOptions = Array.from({ length: 12 }, (_, index) => String(index + 1));
+const minuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'));
+const periodOptions = ['AM', 'PM'];
 
 function timeFromEvent(event) {
   if (!event || event.allDay) {
@@ -162,11 +154,32 @@ function timeFromEvent(event) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-function applyTimeDigit(time, digit) {
-  const digits = `${time.replace(':', '')}${digit}`.slice(-4).padStart(4, '0');
-  const hour = Math.min(Number(digits.slice(0, 2)), 23);
-  const minute = Math.min(Number(digits.slice(2, 4)), 59);
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+function endTimeFromEvent(event) {
+  if (!event || event.allDay || !event.end) {
+    return '10:00';
+  }
+
+  const date = parseEventDate(event.end);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function toClockParts(time) {
+  const [rawHour, minute] = time.split(':').map(Number);
+  const period = rawHour >= 12 ? 'PM' : 'AM';
+  const hour = rawHour % 12 || 12;
+  return {
+    hour: String(hour),
+    minute: String(minute).padStart(2, '0'),
+    period
+  };
+}
+
+function fromClockParts(parts) {
+  const hour12 = Number(parts.hour);
+  const hour24 = parts.period === 'PM'
+    ? (hour12 % 12) + 12
+    : hour12 % 12;
+  return `${String(hour24).padStart(2, '0')}:${parts.minute}`;
 }
 
 function parseEventDate(value) {
@@ -537,12 +550,56 @@ function CalendarList({ calendars }) {
   );
 }
 
+function WheelColumn({ disabled, label, onSelect, options, value }) {
+  const selectedRef = useRef(null);
+
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: 'center' });
+  }, [value]);
+
+  return (
+    <div className="time-wheel-column" aria-label={label}>
+      {options.map((option) => (
+        <button
+          className={value === option ? 'time-wheel-option selected-time-option' : 'time-wheel-option'}
+          disabled={disabled}
+          key={option}
+          onClick={() => onSelect(option)}
+          ref={value === option ? selectedRef : undefined}
+          type="button"
+        >
+          {option}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TimeWheel({ disabled, label, onChange, value }) {
+  const parts = toClockParts(value);
+  const updatePart = (key, nextValue) => {
+    onChange(fromClockParts({ ...parts, [key]: nextValue }));
+  };
+
+  return (
+    <div className={`time-wheel ${disabled ? 'disabled-time-wheel' : ''}`}>
+      <div className="time-wheel-label">{label}</div>
+      <div className="time-wheel-columns">
+        <WheelColumn disabled={disabled} label={`${label} hora`} onSelect={(hour) => updatePart('hour', hour)} options={hourOptions} value={parts.hour} />
+        <WheelColumn disabled={disabled} label={`${label} minutos`} onSelect={(minute) => updatePart('minute', minute)} options={minuteOptions} value={parts.minute} />
+        <WheelColumn disabled={disabled} label={`${label} periodo`} onSelect={(period) => updatePart('period', period)} options={periodOptions} value={parts.period} />
+      </div>
+    </div>
+  );
+}
+
 function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, onSubmit }) {
   const [calendarId, setCalendarId] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState(() => startOfDay(initialDate));
-  const [eventTime, setEventTime] = useState('09:00');
-  const [activeInput, setActiveInput] = useState('title');
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('10:00');
+  const [isAllDay, setIsAllDay] = useState(false);
   const [isCapsLocked, setIsCapsLocked] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -563,9 +620,10 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
           : calendars[0]?.id || ''
       ));
       setEventDate(editingEvent ? startOfDay(parseEventDate(editingEvent.start)) : startOfDay(initialDate));
-      setEventTime(timeFromEvent(editingEvent));
+      setStartTime(timeFromEvent(editingEvent));
+      setEndTime(endTimeFromEvent(editingEvent));
+      setIsAllDay(editingEvent?.allDay || false);
       setEventTitle(editingEvent?.title || '');
-      setActiveInput('title');
       setIsCapsLocked(true);
       setError('');
     }
@@ -584,32 +642,12 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
   }
 
   const appendKey = (value) => {
-    if (activeInput === 'time') {
-      if (/^\d$/.test(value)) {
-        setEventTime((current) => applyTimeDigit(current, value));
-      }
-      return;
-    }
-
     setEventTitle((current) => `${current}${value}`);
   };
   const deleteLast = () => {
-    if (activeInput === 'time') {
-      setEventTime((current) => {
-        const digits = current.replace(':', '').slice(0, -1).padStart(4, '0');
-        return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
-      });
-      return;
-    }
-
     setEventTitle((current) => current.slice(0, -1));
   };
   const clearTitle = () => {
-    if (activeInput === 'time') {
-      setEventTime('00:00');
-      return;
-    }
-
     setEventTitle('');
   };
 
@@ -628,7 +666,9 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
         uid: editingEvent?.extendedProps?.uid || '',
         title: eventTitle.trim(),
         date: toCalendarDateInput(eventDate),
-        time: eventTime
+        startTime,
+        endTime,
+        allDay: isAllDay
       });
     } catch (submitError) {
       setError(submitError.message);
@@ -670,9 +710,8 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
 
             <div className="field-label">Titulo</div>
             <input
-              className={`event-title-input ${activeInput === 'title' ? 'active-text-input' : ''}`}
+              className="event-title-input active-text-input"
               onChange={(event) => setEventTitle(event.target.value)}
-              onFocus={() => setActiveInput('title')}
               placeholder="Nombre del evento"
               value={eventTitle}
             />
@@ -681,27 +720,18 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
             </div>
 
             <div className="field-label time-field-label">Hora</div>
-            <div className="time-picker">
-              <button className="time-adjust-button" onClick={() => setEventTime((current) => addMinutesToTime(current, -60))} type="button">
-                -1h
-              </button>
-              <button className="time-adjust-button" onClick={() => setEventTime((current) => addMinutesToTime(current, -15))} type="button">
-                -15
-              </button>
-              <button
-                className={`time-display ${activeInput === 'time' ? 'active-time-display' : ''}`}
-                onClick={() => setActiveInput('time')}
-                type="button"
-              >
-                {formatTimeLabel(eventTime)}
-              </button>
-              <button className="time-adjust-button" onClick={() => setEventTime((current) => addMinutesToTime(current, 15))} type="button">
-                +15
-              </button>
-              <button className="time-adjust-button" onClick={() => setEventTime((current) => addMinutesToTime(current, 60))} type="button">
-                +1h
-              </button>
+            <div className="time-range-picker">
+              <TimeWheel disabled={isAllDay} label="Inicio" onChange={setStartTime} value={startTime} />
+              <TimeWheel disabled={isAllDay} label="Fin" onChange={setEndTime} value={endTime} />
             </div>
+            <button
+              className={`all-day-toggle ${isAllDay ? 'active-all-day-toggle' : ''}`}
+              onClick={() => setIsAllDay((current) => !current)}
+              type="button"
+            >
+              Todo el dia
+              <span>{isAllDay ? 'Si' : 'No'}</span>
+            </button>
           </div>
 
           <div className="modal-calendar-column">
@@ -868,7 +898,7 @@ function App() {
     }
   };
 
-  const createEvent = async ({ calendarId, eventUrl, uid, title, date, time }) => {
+  const createEvent = async ({ calendarId, eventUrl, uid, title, date, startTime, endTime, allDay }) => {
     const isEditingEvent = Boolean(eventUrl && uid);
     setStatus(isEditingEvent ? 'Guardando evento...' : 'Agregando evento...');
     setSyncError('');
@@ -878,7 +908,7 @@ function App() {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ calendarId, eventUrl, uid, title, date, time })
+      body: JSON.stringify({ calendarId, eventUrl, uid, title, date, startTime, endTime, allDay })
     });
     const payload = await response.json().catch(() => ({}));
 

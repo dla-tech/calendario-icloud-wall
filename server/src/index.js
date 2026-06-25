@@ -232,9 +232,16 @@ function createAllDayIcs({ title, date, uid }) {
   return `${lines.map(foldIcsLine).join('\r\n')}\r\n`;
 }
 
-function createTimedIcs({ title, date, time, uid }) {
+function timeToMinutes(time) {
+  const [hour, minute] = time.split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+function createTimedIcs({ title, date, startTime, endTime, uid }) {
   const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
-  const end = addTime(date, time, 60);
+  const end = timeToMinutes(endTime) <= timeToMinutes(startTime)
+    ? { date: addCalendarDate(date, 1), time: endTime }
+    : { date, time: endTime };
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -247,7 +254,7 @@ function createTimedIcs({ title, date, time, uid }) {
     `CREATED:${now}`,
     `LAST-MODIFIED:${now}`,
     `SUMMARY:${escapeIcsText(title)}`,
-    `DTSTART;TZID=America/Puerto_Rico:${toIcsDateTime(date, time)}`,
+    `DTSTART;TZID=America/Puerto_Rico:${toIcsDateTime(date, startTime)}`,
     `DTEND;TZID=America/Puerto_Rico:${toIcsDateTime(end.date, end.time)}`,
     'END:VEVENT',
     'END:VCALENDAR'
@@ -256,10 +263,10 @@ function createTimedIcs({ title, date, time, uid }) {
   return `${lines.map(foldIcsLine).join('\r\n')}\r\n`;
 }
 
-function createEventIcs({ title, date, time, uid }) {
-  return time
-    ? createTimedIcs({ title, date, time, uid })
-    : createAllDayIcs({ title, date, uid });
+function createEventIcs({ title, date, startTime, endTime, allDay, uid }) {
+  return allDay
+    ? createAllDayIcs({ title, date, uid })
+    : createTimedIcs({ title, date, startTime, endTime, uid });
 }
 
 async function getCreateDAVClient() {
@@ -426,13 +433,15 @@ async function fetchICloudEvents(rangeStart, rangeEnd) {
   };
 }
 
-async function createICloudEvent({ calendarId, title, date, time }) {
+async function createICloudEvent({ calendarId, title, date, startTime, endTime, time, allDay }) {
   assertConfig();
 
   const targetCalendarId = assertText(calendarId, 'El calendario');
   const eventTitle = assertText(title, 'El titulo');
   const eventDate = assertCalendarDate(date);
-  const eventTime = assertEventTime(time);
+  const isAllDay = allDay === true;
+  const eventStartTime = assertEventTime(startTime || time || '09:00');
+  const eventEndTime = assertEventTime(endTime || addTime(eventDate, eventStartTime, 60).time);
   const createDAVClient = await getCreateDAVClient();
   const client = await createDAVClient({
     serverUrl: process.env.CALDAV_SERVER,
@@ -467,7 +476,14 @@ async function createICloudEvent({ calendarId, title, date, time }) {
       'Content-Type': 'text/calendar; charset=utf-8',
       'If-None-Match': '*'
     },
-    body: createEventIcs({ title: eventTitle, date: eventDate, time: eventTime, uid })
+    body: createEventIcs({
+      title: eventTitle,
+      date: eventDate,
+      startTime: eventStartTime,
+      endTime: eventEndTime,
+      allDay: isAllDay,
+      uid
+    })
   });
 
   if (!response.ok) {
@@ -481,20 +497,24 @@ async function createICloudEvent({ calendarId, title, date, time }) {
     id: uid,
     title: eventTitle,
     date: eventDate,
-    time: eventTime,
+    startTime: eventStartTime,
+    endTime: eventEndTime,
+    allDay: isAllDay,
     calendarId: calendar.url,
     calendarName: calendar.displayName || calendar.url || 'iCloud'
   };
 }
 
-async function updateICloudEvent({ eventUrl, uid, title, date, time }) {
+async function updateICloudEvent({ eventUrl, uid, title, date, startTime, endTime, time, allDay }) {
   assertConfig();
 
   const targetEventUrl = assertText(eventUrl, 'El evento');
   const eventUid = assertText(uid, 'El identificador del evento');
   const eventTitle = assertText(title, 'El titulo');
   const eventDate = assertCalendarDate(date);
-  const eventTime = assertEventTime(time);
+  const isAllDay = allDay === true;
+  const eventStartTime = assertEventTime(startTime || time || '09:00');
+  const eventEndTime = assertEventTime(endTime || addTime(eventDate, eventStartTime, 60).time);
   const createDAVClient = await getCreateDAVClient();
   const client = await createDAVClient({
     serverUrl: process.env.CALDAV_SERVER,
@@ -521,7 +541,14 @@ async function updateICloudEvent({ eventUrl, uid, title, date, time }) {
       Authorization: `Basic ${Buffer.from(`${process.env.ICLOUD_USERNAME}:${process.env.ICLOUD_APP_PASSWORD}`).toString('base64')}`,
       'Content-Type': 'text/calendar; charset=utf-8'
     },
-    body: createEventIcs({ title: eventTitle, date: eventDate, time: eventTime, uid: eventUid })
+    body: createEventIcs({
+      title: eventTitle,
+      date: eventDate,
+      startTime: eventStartTime,
+      endTime: eventEndTime,
+      allDay: isAllDay,
+      uid: eventUid
+    })
   });
 
   if (!response.ok) {
@@ -535,7 +562,9 @@ async function updateICloudEvent({ eventUrl, uid, title, date, time }) {
     id: eventUid,
     title: eventTitle,
     date: eventDate,
-    time: eventTime,
+    startTime: eventStartTime,
+    endTime: eventEndTime,
+    allDay: isAllDay,
     calendarId: calendar.url,
     calendarName: calendar.displayName || calendar.url || 'iCloud'
   };
