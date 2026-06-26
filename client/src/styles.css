@@ -278,6 +278,17 @@ button:disabled {
   font-weight: 750;
 }
 
+.sync-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.sync-row .icon-button {
+  flex: 0 0 66px;
+}
+
 .sync-error {
   margin-top: 6px;
   color: #b42318;

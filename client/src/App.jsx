@@ -47,8 +47,6 @@ const importantEventMarker = '🚨';
 const workCalendarName = 'trabajo';
 const importantEventKeywords = ['alarma', 'alerta', 'sirena'];
 const alertWindowMs = 10 * 1000;
-const alertRepeatDurationMs = 70 * 1000;
-const alertRepeats = Math.floor(alertRepeatDurationMs / alertWindowMs) + 1;
 const alertCheckIntervalMs = 1000;
 const shortWeekdays = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
 const shortMonths = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -273,7 +271,7 @@ function allDayMuteKey(event, date) {
 
 function isSameAlertWindow(now, target) {
   const delta = now.getTime() - target.getTime();
-  return delta >= 0 && delta < alertRepeatDurationMs;
+  return delta >= 0 && delta < alertWindowMs;
 }
 
 function startOfWeek(date) {
@@ -359,7 +357,6 @@ function DateTimePanel({
   onAddEvent,
   onRefresh,
   onFullscreen,
-  onTestAlert,
   onToggleAlertsMuted
 }) {
   const [now, setNow] = useState(new Date());
@@ -391,19 +388,6 @@ function DateTimePanel({
         <button className="icon-button" onClick={onRefresh} title="Actualizar" type="button">
           <RefreshCw size={30} aria-hidden="true" />
         </button>
-        <button className="icon-button" onClick={onTestAlert} title="Probar sirena" type="button">
-          <Volume2 size={30} aria-hidden="true" />
-        </button>
-        <button
-          aria-label={alertsMuted ? 'Activar sonido de alertas' : 'Mutear alertas'}
-          aria-pressed={alertsMuted}
-          className={`icon-button ${alertsMuted ? 'muted-alert-button' : 'sound-alert-button'}`}
-          onClick={onToggleAlertsMuted}
-          title={alertsMuted ? 'Alertas muteadas' : 'Alertas con sonido'}
-          type="button"
-        >
-          {alertsMuted ? <VolumeX size={30} aria-hidden="true" /> : <Volume2 size={30} aria-hidden="true" />}
-        </button>
         <button className="icon-button" onClick={onFullscreen} title="Pantalla completa" type="button">
           <Expand size={30} aria-hidden="true" />
         </button>
@@ -413,7 +397,19 @@ function DateTimePanel({
       <CalendarList calendars={calendars} />
 
       <div className="sync-status">
-        <div>{status}</div>
+        <div className="sync-row">
+          <div>{status}</div>
+          <button
+            aria-label={alertsMuted ? 'Activar sonido de alertas' : 'Mutear alertas'}
+            aria-pressed={!alertsMuted}
+            className={`icon-button ${alertsMuted ? 'muted-alert-button' : 'sound-alert-button'}`}
+            onClick={onToggleAlertsMuted}
+            title={alertsMuted ? 'Sonido apagado' : 'Sonido activo'}
+            type="button"
+          >
+            {alertsMuted ? <VolumeX size={30} aria-hidden="true" /> : <Volume2 size={30} aria-hidden="true" />}
+          </button>
+        </div>
         {syncError && <div className="sync-error">{syncError}</div>}
       </div>
     </aside>
@@ -970,29 +966,18 @@ function useEventAlerts(events) {
       setActiveAlertEvent({ key: alertKey, event });
     }
 
-    let hasPlayed = false;
     const playOnce = async () => {
-      const didPlay = await playBeep(sound);
-
-      if (didPlay && !hasPlayed) {
-        hasPlayed = true;
-        firedAlertKeysRef.current.add(alertKey);
-      }
+      firedAlertKeysRef.current.add(alertKey);
+      await playBeep(sound);
     };
 
     void playOnce();
 
-    const timers = Array.from({ length: alertRepeats - 1 }, (_, index) => (
-      window.setTimeout(() => {
-        void playOnce();
-      }, (index + 1) * alertWindowMs)
-    ));
-
     const cleanupTimer = window.setTimeout(() => {
       clearAlertSequence(alertKey);
-    }, alertRepeatDurationMs + alertWindowMs);
+    }, alertWindowMs);
 
-    activeAlertTimersRef.current.set(alertKey, { event, timers: [...timers, cleanupTimer] });
+    activeAlertTimersRef.current.set(alertKey, { event, timers: [cleanupTimer] });
   }, [clearAlertSequence, playBeep]);
 
   useEffect(() => {
@@ -1083,17 +1068,12 @@ function useEventAlerts(events) {
     audioContextRef.current?.close().catch(() => {});
   }, [stopActiveOscillators]);
 
-  const testEventAlert = useCallback(() => {
-    startAlertSequence(`manual:${Date.now()}`);
-  }, [startAlertSequence]);
-
   return useMemo(() => ({
     activeAlertEvent: activeAlertEvent?.event || null,
     alertsMuted,
     dismissActiveAlert,
-    testEventAlert,
     toggleAlertsMuted
-  }), [activeAlertEvent, alertsMuted, dismissActiveAlert, testEventAlert, toggleAlertsMuted]);
+  }), [activeAlertEvent, alertsMuted, dismissActiveAlert, toggleAlertsMuted]);
 }
 
 function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, onSubmit }) {
@@ -1322,7 +1302,7 @@ function App() {
   const hasRealDataRef = useRef(false);
   const isFetchingRef = useRef(false);
 
-  const { activeAlertEvent, alertsMuted, dismissActiveAlert, testEventAlert, toggleAlertsMuted } = useEventAlerts(events);
+  const { activeAlertEvent, alertsMuted, dismissActiveAlert, toggleAlertsMuted } = useEventAlerts(events);
 
   const fetchEvents = useCallback(async () => {
     if (isFetchingRef.current) {
@@ -1455,7 +1435,6 @@ function App() {
         onAddEvent={openAddEvent}
         onRefresh={fetchEvents}
         onFullscreen={requestFullscreen}
-        onTestAlert={testEventAlert}
         onToggleAlertsMuted={toggleAlertsMuted}
       />
 
