@@ -3,7 +3,7 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import esLocale from '@fullcalendar/core/locales/es';
-import { CalendarDays, Delete, Expand, Pencil, Plus, RefreshCw, Volume2, X } from 'lucide-react';
+import { CalendarDays, Delete, Expand, Pencil, Plus, RefreshCw, Volume2, VolumeX, X } from 'lucide-react';
 
 const viewOptions = [
   { label: 'Dia', value: 'timeGridDay' },
@@ -348,7 +348,20 @@ function isDaytime(date) {
   return hour >= 6 && hour < 18;
 }
 
-function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, syncError, onAddEvent, onRefresh, onFullscreen, onTestAlert }) {
+function DateTimePanel({
+  calendars,
+  events,
+  selectedDate,
+  onSelectDate,
+  status,
+  syncError,
+  alertsMuted,
+  onAddEvent,
+  onRefresh,
+  onFullscreen,
+  onTestAlert,
+  onToggleAlertsMuted
+}) {
   const [now, setNow] = useState(new Date());
   const weekday = weekdayFormatter.format(now);
   const month = monthFormatter.format(now);
@@ -380,6 +393,16 @@ function DateTimePanel({ calendars, events, selectedDate, onSelectDate, status, 
         </button>
         <button className="icon-button" onClick={onTestAlert} title="Probar sirena" type="button">
           <Volume2 size={30} aria-hidden="true" />
+        </button>
+        <button
+          aria-label={alertsMuted ? 'Activar sonido de alertas' : 'Mutear alertas'}
+          aria-pressed={alertsMuted}
+          className={`icon-button ${alertsMuted ? 'muted-alert-button' : 'sound-alert-button'}`}
+          onClick={onToggleAlertsMuted}
+          title={alertsMuted ? 'Alertas muteadas' : 'Alertas con sonido'}
+          type="button"
+        >
+          {alertsMuted ? <VolumeX size={30} aria-hidden="true" /> : <Volume2 size={30} aria-hidden="true" />}
         </button>
         <button className="icon-button" onClick={onFullscreen} title="Pantalla completa" type="button">
           <Expand size={30} aria-hidden="true" />
@@ -815,11 +838,24 @@ function TimeWheel({ disabled, label, onChange, value }) {
 
 function useEventAlerts(events) {
   const [activeAlertEvent, setActiveAlertEvent] = useState(null);
+  const [alertsMuted, setAlertsMuted] = useState(false);
   const audioContextRef = useRef(null);
   const activeOscillatorsRef = useRef(new Set());
   const firedAlertKeysRef = useRef(new Set());
   const activeAlertTimersRef = useRef(new Map());
   const mutedAllDayAlertKeysRef = useRef(new Set());
+  const alertsMutedRef = useRef(false);
+
+  const stopActiveOscillators = useCallback(() => {
+    activeOscillatorsRef.current.forEach((oscillator) => {
+      try {
+        oscillator.stop();
+      } catch {
+        // The oscillator may have already stopped naturally.
+      }
+    });
+    activeOscillatorsRef.current.clear();
+  }, []);
 
   const ensureAudioContext = useCallback(async () => {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -838,6 +874,10 @@ function useEventAlerts(events) {
   }, []);
 
   const playBeep = useCallback(async (sound = 'siren') => {
+    if (alertsMutedRef.current) {
+      return false;
+    }
+
     const audioContext = await ensureAudioContext();
 
     if (!audioContext || audioContext.state !== 'running') {
@@ -885,6 +925,19 @@ function useEventAlerts(events) {
     return true;
   }, [ensureAudioContext]);
 
+  const toggleAlertsMuted = useCallback(() => {
+    setAlertsMuted((current) => {
+      const nextMuted = !current;
+      alertsMutedRef.current = nextMuted;
+
+      if (nextMuted) {
+        stopActiveOscillators();
+      }
+
+      return nextMuted;
+    });
+  }, [stopActiveOscillators]);
+
   const clearAlertSequence = useCallback((alertKey) => {
     const { timers = [] } = activeAlertTimersRef.current.get(alertKey) || {};
     timers.forEach((timer) => window.clearTimeout(timer));
@@ -903,17 +956,10 @@ function useEventAlerts(events) {
     activeAlertTimersRef.current.forEach(({ timers }) => {
       timers.forEach((timer) => window.clearTimeout(timer));
     });
-    activeOscillatorsRef.current.forEach((oscillator) => {
-      try {
-        oscillator.stop();
-      } catch {
-        // The oscillator may have already stopped naturally.
-      }
-    });
-    activeOscillatorsRef.current.clear();
+    stopActiveOscillators();
     activeAlertTimersRef.current.clear();
     setActiveAlertEvent(null);
-  }, []);
+  }, [stopActiveOscillators]);
 
   const startAlertSequence = useCallback((alertKey, event = null, sound = 'siren') => {
     if (firedAlertKeysRef.current.has(alertKey) || activeAlertTimersRef.current.has(alertKey)) {
@@ -1032,17 +1078,10 @@ function useEventAlerts(events) {
       timers.forEach((timer) => window.clearTimeout(timer));
     });
     activeAlertTimersRef.current.clear();
-    activeOscillatorsRef.current.forEach((oscillator) => {
-      try {
-        oscillator.stop();
-      } catch {
-        // The oscillator may have already stopped naturally.
-      }
-    });
-    activeOscillatorsRef.current.clear();
+    stopActiveOscillators();
     setActiveAlertEvent(null);
     audioContextRef.current?.close().catch(() => {});
-  }, []);
+  }, [stopActiveOscillators]);
 
   const testEventAlert = useCallback(() => {
     startAlertSequence(`manual:${Date.now()}`);
@@ -1050,9 +1089,11 @@ function useEventAlerts(events) {
 
   return useMemo(() => ({
     activeAlertEvent: activeAlertEvent?.event || null,
+    alertsMuted,
     dismissActiveAlert,
-    testEventAlert
-  }), [activeAlertEvent, dismissActiveAlert, testEventAlert]);
+    testEventAlert,
+    toggleAlertsMuted
+  }), [activeAlertEvent, alertsMuted, dismissActiveAlert, testEventAlert, toggleAlertsMuted]);
 }
 
 function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, onSubmit }) {
@@ -1281,7 +1322,7 @@ function App() {
   const hasRealDataRef = useRef(false);
   const isFetchingRef = useRef(false);
 
-  const { activeAlertEvent, dismissActiveAlert, testEventAlert } = useEventAlerts(events);
+  const { activeAlertEvent, alertsMuted, dismissActiveAlert, testEventAlert, toggleAlertsMuted } = useEventAlerts(events);
 
   const fetchEvents = useCallback(async () => {
     if (isFetchingRef.current) {
@@ -1410,10 +1451,12 @@ function App() {
         onSelectDate={setSelectedDate}
         status={status}
         syncError={syncError}
+        alertsMuted={alertsMuted}
         onAddEvent={openAddEvent}
         onRefresh={fetchEvents}
         onFullscreen={requestFullscreen}
         onTestAlert={testEventAlert}
+        onToggleAlertsMuted={toggleAlertsMuted}
       />
 
       <section className="events-stage" aria-label="Eventos">
