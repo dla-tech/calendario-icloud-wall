@@ -837,6 +837,33 @@ h1 {
   line-height: 1.06;
 }
 
+.event-detail-edit-notes {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 68px;
+  margin-top: 8px;
+  padding: 0 22px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #0f3d86;
+  background: #dbeafe;
+  cursor: pointer;
+  font-size: clamp(20px, 1.6vw, 30px);
+  font-weight: 900;
+}
+
+.event-detail-edit-notes:hover:not(:disabled) {
+  border-color: #1f6feb;
+  background: #bfdbfe;
+}
+
+.event-detail-edit-notes:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .night-mode .event-choice {
   border-color: #475569;
   background: #172033;
@@ -898,6 +925,17 @@ h1 {
 
 .night-mode .event-detail-field span {
   color: #a8b5c8;
+}
+
+.night-mode .event-detail-edit-notes {
+  border-color: #334155;
+  color: #dbeafe;
+  background: #1e3a8a;
+}
+
+.night-mode .event-detail-edit-notes:hover:not(:disabled) {
+  border-color: #60a5fa;
+  background: #1d4ed8;
 }
 
 .active-alert-event {
@@ -1058,9 +1096,22 @@ h1 {
   padding: 20px 26px 26px;
 }
 
+.notes-modal {
+  width: min(1320px, calc(100vw - 56px));
+}
+
+.notes-modal-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(500px, 0.95fr);
+  gap: 22px;
+  min-height: 0;
+  padding: 20px 26px 26px;
+}
+
 .modal-column,
 .modal-calendar-column,
-.keyboard-column {
+.keyboard-column,
+.notes-editor-column {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1147,6 +1198,27 @@ h1 {
 }
 
 .night-mode .event-title-input {
+  border-color: #475569;
+  color: #f8fafc;
+  background: #172033;
+}
+
+.notes-textarea {
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 12px;
+  padding: 18px;
+  resize: none;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #111827;
+  background: #ffffff;
+  font-size: clamp(28px, 2.8vw, 46px);
+  font-weight: 850;
+  line-height: 1.12;
+}
+
+.night-mode .notes-textarea {
   border-color: #475569;
   color: #f8fafc;
   background: #172033;
@@ -1288,6 +1360,10 @@ h1 {
 
 .modal-action-row .add-submit-button {
   margin-top: 0;
+}
+
+.notes-submit-button {
+  margin-top: auto;
 }
 
 .delete-event-button {

@@ -58,6 +58,13 @@ const keyboardRows = [
   ['Z', 'X', 'C', 'V', 'B', 'N', 'M', '.', ',', '-'],
   ['🚨', '/', '&', '@', '#', '$', '?', '!', ':', '(']
 ];
+const notesKeyboardRows = [
+  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+  ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+  ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Ñ'],
+  ['Z', 'X', 'C', 'V', 'B', 'N', 'M', '.', ',', '-'],
+  ['🚨', '✕', '✓', '🕒', '/', '&', '@', '#', '?', '!']
+];
 
 function buildDemoData() {
   const today = startOfDay(new Date());
@@ -174,6 +181,10 @@ function endTimeFromEvent(event) {
 
   const date = parseEventDate(event.end);
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function calendarDateFromEvent(event) {
+  return toCalendarDateInput(startOfDay(parseEventDate(event.start)));
 }
 
 function toClockParts(time) {
@@ -437,7 +448,7 @@ function AlertEventPanel({ event, onDismiss }) {
   );
 }
 
-function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, selectedDate, onEditEvent }) {
+function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, selectedDate, onEditEvent, onEditNotes }) {
   const [actionEventId, setActionEventId] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const visibleEvents = useMemo(() => {
@@ -524,7 +535,11 @@ function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, sele
           <span>No hay eventos en esta vista.</span>
         </div>
       ) : selectedEvent ? (
-        <EventDetail event={selectedEvent} onBack={() => setSelectedEventId(null)} />
+        <EventDetail
+          event={selectedEvent}
+          onBack={() => setSelectedEventId(null)}
+          onEditNotes={() => onEditNotes(selectedEvent)}
+        />
       ) : actionEvent ? (
         <EventActionChoice
           event={actionEvent}
@@ -610,10 +625,11 @@ function EventActionChoice({ event, onCancel, onEdit, onViewNotes }) {
   );
 }
 
-function EventDetail({ event, onBack }) {
+function EventDetail({ event, onBack, onEditNotes }) {
   const eventDate = parseEventDate(event.start);
   const description = eventDescription(event);
   const location = eventLocation(event);
+  const isEditable = event.extendedProps?.editable && event.extendedProps?.eventUrl;
 
   return (
     <article
@@ -650,6 +666,20 @@ function EventDetail({ event, onBack }) {
           <strong>{description || 'Sin notas escritas.'}</strong>
         </div>
       </div>
+
+      <button
+        className="event-detail-edit-notes"
+        disabled={!isEditable}
+        onClick={(clickEvent) => {
+          clickEvent.stopPropagation();
+          onEditNotes();
+        }}
+        onKeyDown={(keyEvent) => keyEvent.stopPropagation()}
+        type="button"
+      >
+        <Pencil size={30} aria-hidden="true" />
+        <span>Editar notas</span>
+      </button>
     </article>
   );
 }
@@ -1152,7 +1182,9 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
         date: toCalendarDateInput(eventDate),
         startTime,
         endTime,
-        allDay: isAllDay
+        allDay: isAllDay,
+        description: eventDescription(editingEvent),
+        location: eventLocation(editingEvent)
       });
     } catch (submitError) {
       setError(submitError.message);
@@ -1323,6 +1355,132 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
   );
 }
 
+function NotesModal({ editingEvent, open, onClose, onSubmit }) {
+  const [notes, setNotes] = useState('');
+  const [isCapsLocked, setIsCapsLocked] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+  const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      setNotes(eventDescription(editingEvent));
+      setIsCapsLocked(true);
+      setError('');
+    }
+
+    wasOpenRef.current = open;
+  }, [editingEvent, open]);
+
+  if (!open || !editingEvent) {
+    return null;
+  }
+
+  const appendKey = (value) => {
+    setNotes((current) => `${current}${value}`);
+  };
+  const deleteLast = () => {
+    setNotes((current) => current.slice(0, -1));
+  };
+  const clearNotes = () => {
+    setNotes('');
+  };
+  const handleSubmit = async () => {
+    if (isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError('');
+
+    try {
+      await onSubmit({
+        event: editingEvent,
+        description: notes.trim()
+      });
+    } catch (submitError) {
+      setError(submitError.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="add-event-modal notes-modal" aria-label="Editar notas" role="dialog" aria-modal="true">
+        <div className="modal-heading">
+          <div>
+            <p className="eyebrow">Editar notas</p>
+            <h2>{editingEvent.title}</h2>
+          </div>
+          <button className="icon-button modal-close" onClick={onClose} title="Cerrar" type="button">
+            <X size={30} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="notes-modal-layout">
+          <div className="notes-editor-column">
+            <div className="field-label">Notas</div>
+            <textarea
+              className="notes-textarea active-text-input"
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="Escribe las notas"
+              value={notes}
+            />
+            <div className="selected-calendar-note">
+              {fullDateFormatter.format(parseEventDate(editingEvent.start))} - {formatEventTime(editingEvent)}
+            </div>
+          </div>
+
+          <div className="keyboard-column">
+            <div className="field-label">Teclado</div>
+            <div className="touch-keyboard notes-keyboard">
+              {notesKeyboardRows.map((row) => (
+                <div className="keyboard-row" key={row.join('')}>
+                  {row.map((key) => {
+                    const displayKey = /^[A-ZÑ]$/.test(key) && !isCapsLocked ? key.toLowerCase() : key;
+
+                    return (
+                      <button className="keyboard-key" key={key} onClick={() => appendKey(displayKey)} type="button">
+                        {displayKey}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+              <div className="keyboard-row keyboard-actions">
+                <button
+                  className={`keyboard-key ${isCapsLocked ? 'active-key' : ''}`}
+                  onClick={() => setIsCapsLocked((current) => !current)}
+                  type="button"
+                >
+                  Caps
+                </button>
+                <button className="keyboard-key wide-key" onClick={() => appendKey(' ')} type="button">Espacio</button>
+                <button className="keyboard-key" onClick={() => appendKey('\n')} type="button">Enter</button>
+                <button className="keyboard-key" onClick={deleteLast} title="Borrar" type="button">
+                  <Delete size={24} aria-hidden="true" />
+                </button>
+                <button className="keyboard-key" onClick={clearNotes} type="button">Limpiar</button>
+              </div>
+            </div>
+
+            {error && <div className="modal-error">{error}</div>}
+            <button
+              className="add-submit-button notes-submit-button"
+              disabled={isSaving}
+              onClick={handleSubmit}
+              type="button"
+            >
+              {isSaving ? 'Guardando...' : 'Guardar notas'}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const [events, setEvents] = useState(() => (useDemoEvents ? demoData.events : []));
   const [calendars, setCalendars] = useState(() => (useDemoEvents ? demoData.calendars : []));
@@ -1333,6 +1491,7 @@ function App() {
   const [isLightMode, setIsLightMode] = useState(() => isDaytime(new Date()));
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [editingNotesEvent, setEditingNotesEvent] = useState(null);
   const hasRealDataRef = useRef(false);
   const isFetchingRef = useRef(false);
 
@@ -1417,7 +1576,7 @@ function App() {
     }
   };
 
-  const createEvent = async ({ calendarId, eventUrl, uid, title, date, startTime, endTime, allDay }) => {
+  const createEvent = async ({ calendarId, eventUrl, uid, title, date, startTime, endTime, allDay, description, location }) => {
     const isEditingEvent = Boolean(eventUrl && uid);
     setStatus(isEditingEvent ? 'Guardando evento...' : 'Agregando evento...');
     setSyncError('');
@@ -1427,7 +1586,7 @@ function App() {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ calendarId, eventUrl, uid, title, date, startTime, endTime, allDay })
+      body: JSON.stringify({ calendarId, eventUrl, uid, title, date, startTime, endTime, allDay, description, location })
     });
     const payload = await response.json().catch(() => ({}));
 
@@ -1438,6 +1597,38 @@ function App() {
     setSelectedDate(parseEventDate(date));
     setIsAddEventOpen(false);
     setEditingEvent(null);
+    await fetchEvents();
+  };
+
+  const updateEventNotes = async ({ event, description }) => {
+    setStatus('Guardando notas...');
+    setSyncError('');
+
+    const response = await fetch('/api/events', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        calendarId: event.extendedProps?.calendarId || '',
+        eventUrl: event.extendedProps?.eventUrl || '',
+        uid: event.extendedProps?.uid || '',
+        title: event.title || '',
+        date: calendarDateFromEvent(event),
+        startTime: timeFromEvent(event),
+        endTime: endTimeFromEvent(event),
+        allDay: Boolean(event.allDay),
+        description,
+        location: eventLocation(event)
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(payload.error || 'No se pudieron guardar las notas.');
+    }
+
+    setEditingNotesEvent(null);
     await fetchEvents();
   };
 
@@ -1468,6 +1659,10 @@ function App() {
     setEditingEvent(null);
   };
 
+  const closeNotesModal = () => {
+    setEditingNotesEvent(null);
+  };
+
   const openAddEvent = () => {
     setEditingEvent(null);
     setIsAddEventOpen(true);
@@ -1476,6 +1671,10 @@ function App() {
   const openEditEvent = (event) => {
     setEditingEvent(event);
     setIsAddEventOpen(true);
+  };
+
+  const openEditNotes = (event) => {
+    setEditingNotesEvent(event);
   };
 
   return (
@@ -1516,6 +1715,7 @@ function App() {
           activeView={activeView}
           onDismissAlert={dismissActiveAlert}
           onEditEvent={openEditEvent}
+          onEditNotes={openEditNotes}
           selectedDate={selectedDate}
         />
       </section>
@@ -1527,6 +1727,12 @@ function App() {
         onDelete={deleteEvent}
         onSubmit={createEvent}
         open={isAddEventOpen}
+      />
+      <NotesModal
+        editingEvent={editingNotesEvent}
+        onClose={closeNotesModal}
+        onSubmit={updateEventNotes}
+        open={Boolean(editingNotesEvent)}
       />
     </main>
   );
