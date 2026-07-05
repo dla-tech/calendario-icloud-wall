@@ -1279,6 +1279,54 @@ h1 {
   background: #14532d;
 }
 
+.modal-action-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.modal-action-row .add-submit-button {
+  margin-top: 0;
+}
+
+.delete-event-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 68px;
+  padding: 0 20px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #991b1b;
+  background: #fee2e2;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.delete-event-button:hover:not(:disabled) {
+  border-color: #ef4444;
+  background: #fecaca;
+}
+
+.delete-event-button:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.night-mode .delete-event-button {
+  border-color: #7f1d1d;
+  color: #fecaca;
+  background: #451a1a;
+}
+
+.night-mode .delete-event-button:hover:not(:disabled) {
+  border-color: #f87171;
+  background: #7f1d1d;
+}
+
 .modal-month-scroll {
   min-height: 0;
   overflow-y: auto;

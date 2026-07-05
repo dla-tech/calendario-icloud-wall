@@ -3,7 +3,7 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import esLocale from '@fullcalendar/core/locales/es';
-import { CalendarDays, Delete, Expand, Pencil, Plus, RefreshCw, Volume2, VolumeX, X } from 'lucide-react';
+import { CalendarDays, Delete, Expand, Pencil, Plus, RefreshCw, Trash2, Volume2, VolumeX, X } from 'lucide-react';
 
 const viewOptions = [
   { label: 'Dia', value: 'timeGridDay' },
@@ -1076,7 +1076,7 @@ function useEventAlerts(events) {
   }), [activeAlertEvent, alertsMuted, dismissActiveAlert, toggleAlertsMuted]);
 }
 
-function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, onSubmit }) {
+function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, onDelete, onSubmit }) {
   const [calendarId, setCalendarId] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState(() => startOfDay(initialDate));
@@ -1085,6 +1085,7 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
   const [isAllDay, setIsAllDay] = useState(false);
   const [isCapsLocked, setIsCapsLocked] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState('');
   const wasOpenRef = useRef(false);
   const pickerStartMonth = useMemo(() => startOfMonth(new Date()), []);
@@ -1135,7 +1136,7 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
   };
 
   const handleSubmit = async () => {
-    if (!calendarId || eventTitle.trim().length === 0 || isSaving) {
+    if (!calendarId || eventTitle.trim().length === 0 || isSaving || isDeleting) {
       return;
     }
 
@@ -1157,6 +1158,26 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
       setError(submitError.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!isEditing || isSaving || isDeleting) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setError('');
+
+    try {
+      await onDelete({
+        eventUrl: editingEvent?.extendedProps?.eventUrl || '',
+        uid: editingEvent?.extendedProps?.uid || ''
+      });
+    } catch (deleteError) {
+      setError(deleteError.message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1274,14 +1295,27 @@ function AddEventModal({ calendars, editingEvent, initialDate, open, onClose, on
             </div>
 
             {error && <div className="modal-error">{error}</div>}
-            <button
-              className="add-submit-button"
-              disabled={!calendarId || eventTitle.trim().length === 0 || isSaving}
-              onClick={handleSubmit}
-              type="button"
-            >
-              {isSaving ? (isEditing ? 'Guardando...' : 'Agregando...') : (isEditing ? 'Guardar' : 'Agregar')}
-            </button>
+            <div className="modal-action-row">
+              {isEditing && (
+                <button
+                  className="delete-event-button"
+                  disabled={isSaving || isDeleting}
+                  onClick={handleDelete}
+                  type="button"
+                >
+                  <Trash2 size={24} aria-hidden="true" />
+                  {isDeleting ? 'Eliminando...' : 'Eliminar'}
+                </button>
+              )}
+              <button
+                className="add-submit-button"
+                disabled={!calendarId || eventTitle.trim().length === 0 || isSaving || isDeleting}
+                onClick={handleSubmit}
+                type="button"
+              >
+                {isSaving ? (isEditing ? 'Guardando...' : 'Agregando...') : (isEditing ? 'Guardar' : 'Agregar')}
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -1407,6 +1441,28 @@ function App() {
     await fetchEvents();
   };
 
+  const deleteEvent = async ({ eventUrl, uid }) => {
+    setStatus('Eliminando evento...');
+    setSyncError('');
+
+    const response = await fetch('/api/events', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ eventUrl, uid })
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(payload.error || 'No se pudo eliminar el evento.');
+    }
+
+    setIsAddEventOpen(false);
+    setEditingEvent(null);
+    await fetchEvents();
+  };
+
   const closeEventModal = () => {
     setIsAddEventOpen(false);
     setEditingEvent(null);
@@ -1468,6 +1524,7 @@ function App() {
         editingEvent={editingEvent}
         initialDate={selectedDate}
         onClose={closeEventModal}
+        onDelete={deleteEvent}
         onSubmit={createEvent}
         open={isAddEventOpen}
       />

@@ -570,6 +570,32 @@ async function updateICloudEvent({ eventUrl, uid, title, date, startTime, endTim
   };
 }
 
+async function deleteICloudEvent({ eventUrl, uid }) {
+  assertConfig();
+
+  const targetEventUrl = assertText(eventUrl, 'El evento');
+  assertText(uid, 'El identificador del evento');
+  const resolvedEventUrl = new URL(targetEventUrl, process.env.CALDAV_SERVER).href;
+  const response = await fetch(resolvedEventUrl, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${process.env.ICLOUD_USERNAME}:${process.env.ICLOUD_APP_PASSWORD}`).toString('base64')}`
+    }
+  });
+
+  if (!response.ok && response.status !== 404) {
+    const message = await response.text().catch(() => '');
+    const error = new Error(`No se pudo eliminar el evento en iCloud (${response.status}). ${message}`.trim());
+    error.status = response.status;
+    throw error;
+  }
+
+  return {
+    deleted: true,
+    uid
+  };
+}
+
 async function handleEvents(req, res, next) {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -604,9 +630,20 @@ async function handleUpdateEvent(req, res, next) {
   }
 }
 
+async function handleDeleteEvent(req, res, next) {
+  try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const payload = await deleteICloudEvent(req.body || {});
+    res.json(payload);
+  } catch (error) {
+    next(error);
+  }
+}
+
 app.get(['/api/events', '/events'], handleEvents);
 app.post(['/api/events', '/events'], handleCreateEvent);
 app.put(['/api/events', '/events'], handleUpdateEvent);
+app.delete(['/api/events', '/events'], handleDeleteEvent);
 
 app.get(['/api/health', '/health'], (_req, res) => {
   res.json({ ok: true, service: 'calendario-icloud-wall-server' });
