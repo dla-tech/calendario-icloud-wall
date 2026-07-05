@@ -123,11 +123,11 @@ function formatEventTime(event) {
 }
 
 function eventDescription(event) {
-  return String(event.extendedProps?.description || '').trim();
+  return String(event?.extendedProps?.description || '').trim();
 }
 
 function eventLocation(event) {
-  return String(event.extendedProps?.location || '').trim();
+  return String(event?.extendedProps?.location || '').trim();
 }
 
 function formatEventDay(date, isToday) {
