@@ -142,22 +142,32 @@ function formatEventDay(date, isToday) {
   return `${weekday} ${day}, ${month}`;
 }
 
+function isValidDate(date) {
+  return date instanceof Date && !Number.isNaN(date.getTime());
+}
+
+function dateOrToday(value) {
+  const date = value instanceof Date ? value : parseEventDate(value);
+  return isValidDate(date) ? date : new Date();
+}
+
 function startOfDay(date) {
-  const next = new Date(date);
+  const next = new Date(dateOrToday(date));
   next.setHours(0, 0, 0, 0);
   return next;
 }
 
 function addDays(date, days) {
-  const next = new Date(date);
+  const next = new Date(dateOrToday(date));
   next.setDate(next.getDate() + days);
   return next;
 }
 
 function toCalendarDateInput(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const safeDate = dateOrToday(date);
+  const year = safeDate.getFullYear();
+  const month = String(safeDate.getMonth() + 1).padStart(2, '0');
+  const day = String(safeDate.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -207,6 +217,10 @@ function fromClockParts(parts) {
 }
 
 function parseEventDate(value) {
+  if (value === null || value === undefined || value === '') {
+    return new Date(Number.NaN);
+  }
+
   if (typeof value !== 'string') {
     return new Date(value);
   }
@@ -293,19 +307,24 @@ function startOfWeek(date) {
 }
 
 function startOfMonth(date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
+  const safeDate = dateOrToday(date);
+  return new Date(safeDate.getFullYear(), safeDate.getMonth(), 1);
 }
 
 function nextMonth(date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 1);
+  const safeDate = dateOrToday(date);
+  return new Date(safeDate.getFullYear(), safeDate.getMonth() + 1, 1);
 }
 
 function addMonths(date, months) {
-  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const safeDate = dateOrToday(date);
+  return new Date(safeDate.getFullYear(), safeDate.getMonth() + months, 1);
 }
 
 function isSameDay(first, second) {
-  return startOfDay(first).getTime() === startOfDay(second).getTime();
+  const firstDate = dateOrToday(first);
+  const secondDate = dateOrToday(second);
+  return startOfDay(firstDate).getTime() === startOfDay(secondDate).getTime();
 }
 
 function eventOverlapsRange(event, rangeStart, rangeEnd) {
@@ -1719,15 +1738,17 @@ function App() {
           selectedDate={selectedDate}
         />
       </section>
-      <AddEventModal
-        calendars={calendars}
-        editingEvent={editingEvent}
-        initialDate={selectedDate}
-        onClose={closeEventModal}
-        onDelete={deleteEvent}
-        onSubmit={createEvent}
-        open={isAddEventOpen}
-      />
+      {isAddEventOpen && (
+        <AddEventModal
+          calendars={calendars}
+          editingEvent={editingEvent}
+          initialDate={selectedDate}
+          onClose={closeEventModal}
+          onDelete={deleteEvent}
+          onSubmit={createEvent}
+          open={isAddEventOpen}
+        />
+      )}
       <NotesModal
         editingEvent={editingNotesEvent}
         onClose={closeNotesModal}
