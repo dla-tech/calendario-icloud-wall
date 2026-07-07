@@ -163,6 +163,11 @@ function addDays(date, days) {
   return next;
 }
 
+function millisecondsUntilNextDay(date = new Date()) {
+  const tomorrow = addDays(startOfDay(date), 1);
+  return tomorrow.getTime() - date.getTime();
+}
+
 function toCalendarDateInput(date) {
   const safeDate = dateOrToday(date);
   const year = safeDate.getFullYear();
@@ -707,7 +712,7 @@ function MiniCalendar({ events, selectedDate, onSelectDate }) {
   const scrollContainerRef = useRef(null);
   const currentMonthRef = useRef(null);
   const resetTimerRef = useRef(null);
-  const currentMonth = useMemo(() => startOfMonth(new Date()), []);
+  const currentMonth = startOfMonth(new Date());
   const currentMonthTime = currentMonth.getTime();
 
   const miniEvents = useMemo(() => (
@@ -1568,7 +1573,11 @@ function App() {
 
   useEffect(() => {
     if (isSameDay(selectedDate, new Date())) {
-      return undefined;
+      const midnightTimer = window.setTimeout(() => {
+        setSelectedDate(new Date());
+      }, millisecondsUntilNextDay() + 1000);
+
+      return () => window.clearTimeout(midnightTimer);
     }
 
     const resetTimer = window.setTimeout(() => {
