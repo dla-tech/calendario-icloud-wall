@@ -163,11 +163,6 @@ function addDays(date, days) {
   return next;
 }
 
-function millisecondsUntilNextDay(date = new Date()) {
-  const tomorrow = addDays(startOfDay(date), 1);
-  return tomorrow.getTime() - date.getTime();
-}
-
 function toCalendarDateInput(date) {
   const safeDate = dateOrToday(date);
   const year = safeDate.getFullYear();
@@ -383,7 +378,9 @@ function isDaytime(date) {
 
 function DateTimePanel({
   calendars,
+  currentDate,
   events,
+  now,
   selectedDate,
   onSelectDate,
   status,
@@ -394,14 +391,8 @@ function DateTimePanel({
   onFullscreen,
   onToggleAlertsMuted
 }) {
-  const [now, setNow] = useState(new Date());
   const weekday = weekdayFormatter.format(now);
   const month = monthFormatter.format(now);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   return (
     <aside className="date-panel" aria-label="Fecha y hora">
@@ -428,7 +419,7 @@ function DateTimePanel({
         </button>
       </div>
 
-      <MiniCalendar events={events} selectedDate={selectedDate} onSelectDate={onSelectDate} />
+      <MiniCalendar currentDate={currentDate} events={events} selectedDate={selectedDate} onSelectDate={onSelectDate} />
       <CalendarList calendars={calendars} />
 
       <div className="sync-status">
@@ -472,7 +463,7 @@ function AlertEventPanel({ event, onDismiss }) {
   );
 }
 
-function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, selectedDate, onEditEvent, onEditNotes }) {
+function EventBoard({ activeAlertEvent, currentDate, events, activeView, onDismissAlert, selectedDate, onEditEvent, onEditNotes }) {
   const [actionEventId, setActionEventId] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const visibleEvents = useMemo(() => {
@@ -500,7 +491,7 @@ function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, sele
       .sort(compareEvents);
   }, [activeView, events, selectedDate]);
 
-  const isSelectedToday = isSameDay(selectedDate, new Date());
+  const isSelectedToday = isSameDay(selectedDate, currentDate);
   const titleDate = isSelectedToday ? 'hoy' : fullDateFormatter.format(selectedDate);
   const title = activeView === 'timeGridDay'
     ? `Eventos de ${titleDate}`
@@ -581,7 +572,7 @@ function EventBoard({ activeAlertEvent, events, activeView, onDismissAlert, sele
         <div className="event-grid" style={eventGridStyle}>
           {visibleEvents.map((event) => {
             const eventDate = parseEventDate(event.start);
-            const isToday = isSameDay(eventDate, new Date());
+            const isToday = isSameDay(eventDate, currentDate);
             const isHighlighted = highlightedIds.has(event.id);
             const isEditable = event.extendedProps?.editable && event.extendedProps?.eventUrl;
 
@@ -708,12 +699,13 @@ function EventDetail({ event, onBack, onEditNotes }) {
   );
 }
 
-function MiniCalendar({ events, selectedDate, onSelectDate }) {
+function MiniCalendar({ currentDate, events, selectedDate, onSelectDate }) {
   const scrollContainerRef = useRef(null);
   const currentMonthRef = useRef(null);
   const resetTimerRef = useRef(null);
-  const currentMonth = startOfMonth(new Date());
+  const currentMonth = startOfMonth(currentDate);
   const currentMonthTime = currentMonth.getTime();
+  const currentDayKey = toCalendarDateInput(currentDate);
 
   const miniEvents = useMemo(() => (
     [...events].sort(compareEvents).map((event) => ({
@@ -794,7 +786,7 @@ function MiniCalendar({ events, selectedDate, onSelectDate }) {
         {visibleMonths.map((month) => (
           <div
             className="mini-month"
-            key={month.toISOString()}
+            key={`${month.toISOString()}-${currentDayKey}`}
             ref={month.getTime() === currentMonthTime ? currentMonthRef : undefined}
           >
             <div className="mini-month-title">{monthFormatter.format(month)} {month.getFullYear()}</div>
@@ -804,8 +796,12 @@ function MiniCalendar({ events, selectedDate, onSelectDate }) {
               firstDay={firstDayOfWeek}
               initialView="dayGridMonth"
               initialDate={month}
+              now={currentDate}
               dateClick={(info) => onSelectDate(info.date)}
-              dayCellClassNames={(info) => (isSameDay(info.date, selectedDate) ? ['selected-mini-day'] : [])}
+              dayCellClassNames={(info) => [
+                ...(isSameDay(info.date, currentDate) ? ['current-mini-day'] : []),
+                ...(isSameDay(info.date, selectedDate) ? ['selected-mini-day'] : [])
+              ]}
               events={miniEvents}
               eventOrder="sortKey"
               eventDisplay="block"
@@ -1509,6 +1505,7 @@ function App() {
   const [events, setEvents] = useState(() => (useDemoEvents ? demoData.events : []));
   const [calendars, setCalendars] = useState(() => (useDemoEvents ? demoData.calendars : []));
   const [activeView, setActiveView] = useState('timeGridWeek');
+  const [now, setNow] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [status, setStatus] = useState(useDemoEvents ? 'Modo demo activo' : 'Cargando eventos de iCloud...');
   const [syncError, setSyncError] = useState('');
@@ -1518,6 +1515,8 @@ function App() {
   const [editingNotesEvent, setEditingNotesEvent] = useState(null);
   const hasRealDataRef = useRef(false);
   const isFetchingRef = useRef(false);
+  const currentDayKey = toCalendarDateInput(now);
+  const currentDate = useMemo(() => parseEventDate(currentDayKey), [currentDayKey]);
 
   const { activeAlertEvent, alertsMuted, dismissActiveAlert, toggleAlertsMuted } = useEventAlerts(events);
 
@@ -1572,12 +1571,37 @@ function App() {
   }, [fetchEvents]);
 
   useEffect(() => {
-    if (isSameDay(selectedDate, new Date())) {
-      const midnightTimer = window.setTimeout(() => {
-        setSelectedDate(new Date());
-      }, millisecondsUntilNextDay() + 1000);
+    const updateNow = () => setNow(new Date());
+    const visibilityUpdate = () => {
+      if (!document.hidden) {
+        updateNow();
+      }
+    };
 
-      return () => window.clearTimeout(midnightTimer);
+    updateNow();
+
+    const interval = window.setInterval(updateNow, 1000);
+    window.addEventListener('focus', updateNow);
+    window.addEventListener('pageshow', updateNow);
+    document.addEventListener('visibilitychange', visibilityUpdate);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', updateNow);
+      window.removeEventListener('pageshow', updateNow);
+      document.removeEventListener('visibilitychange', visibilityUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelectedDate((currentSelectedDate) => (
+      isSameDay(currentSelectedDate, currentDate) ? currentSelectedDate : new Date()
+    ));
+  }, [currentDate]);
+
+  useEffect(() => {
+    if (isSameDay(selectedDate, currentDate)) {
+      return undefined;
     }
 
     const resetTimer = window.setTimeout(() => {
@@ -1585,7 +1609,7 @@ function App() {
     }, 60000);
 
     return () => window.clearTimeout(resetTimer);
-  }, [selectedDate]);
+  }, [currentDate, selectedDate]);
 
   useEffect(() => {
     const updateTheme = () => setIsLightMode(isDaytime(new Date()));
@@ -1709,7 +1733,9 @@ function App() {
     <main className={`wall-calendar ${isLightMode ? 'day-mode' : 'night-mode'}`}>
       <DateTimePanel
         calendars={calendars}
+        currentDate={currentDate}
         events={events}
+        now={now}
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
         status={status}
@@ -1739,6 +1765,7 @@ function App() {
 
         <EventBoard
           activeAlertEvent={activeAlertEvent}
+          currentDate={currentDate}
           events={events}
           activeView={activeView}
           onDismissAlert={dismissActiveAlert}

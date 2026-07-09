@@ -1661,11 +1661,13 @@ h1 {
   min-height: 30px;
 }
 
-.mini-section .fc .fc-day-today {
+.mini-section .fc .fc-day-today,
+.mini-section .fc .current-mini-day {
   background: #e8f1ff;
 }
 
-.night-mode .mini-section .fc .fc-day-today {
+.night-mode .mini-section .fc .fc-day-today,
+.night-mode .mini-section .fc .current-mini-day {
   background: #1d4ed8;
 }
 

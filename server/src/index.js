@@ -17,11 +17,43 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 4000;
 const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const homeActionFiredKeys = new Map();
+let homeActionInterval = null;
+let homeActionLastRun = null;
+let homeActionLastError = '';
 
 app.use(cors());
 app.use(express.json());
 
 const requiredEnv = ['ICLOUD_USERNAME', 'ICLOUD_APP_PASSWORD', 'CALDAV_SERVER'];
+const defaultHomeActionKeyword = 'casa';
+const homeActionTimezone = process.env.HOME_ACTION_TIMEZONE || 'America/Puerto_Rico';
+
+function envFlag(name, defaultValue = false) {
+  const value = process.env[name];
+
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  return ['1', 'true', 'yes', 'si', 'on'].includes(String(value).trim().toLowerCase());
+}
+
+function envNumber(name, defaultValue, minimum = 1) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value >= minimum ? value : defaultValue;
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .toLocaleLowerCase('es-PR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function isHomeActionsConfigured() {
+  return envFlag('HOME_ACTIONS_ENABLED') && Boolean(process.env.HOME_ACTION_WEBHOOK_URL);
+}
 
 function assertConfig() {
   const missing = requiredEnv.filter((key) => !process.env[key]);
@@ -442,6 +474,170 @@ async function fetchICloudEvents(rangeStart, rangeEnd) {
   };
 }
 
+function homeActionPollMs() {
+  return envNumber('HOME_ACTION_POLL_SECONDS', 30, 5) * 1000;
+}
+
+function homeActionWindowMs() {
+  return envNumber('HOME_ACTION_TRIGGER_WINDOW_SECONDS', 90, 10) * 1000;
+}
+
+function homeActionLookaheadMs() {
+  return envNumber('HOME_ACTION_LOOKAHEAD_MINUTES', 15, 1) * 60 * 1000;
+}
+
+function parseHomeActionTitle(title) {
+  const text = String(title || '');
+  const bracketMatch = text.match(/\[(?:casa|home)\s*:\s*([^\]]+)\]/i);
+
+  if (bracketMatch) {
+    return bracketMatch[1].trim();
+  }
+
+  const inlineMatch = text.match(/(?:^|\s)(?:casa|home)\s*:\s*([^#|\n]+)/i);
+
+  if (inlineMatch) {
+    return inlineMatch[1].trim();
+  }
+
+  return '';
+}
+
+function homeActionKey(event) {
+  return `${event.extendedProps?.uid || event.id || event.title}:${event.start}`;
+}
+
+function isHomeActionEvent(event) {
+  if (!event || event.allDay) {
+    return false;
+  }
+
+  const calendarFilter = normalizeText(process.env.HOME_ACTION_CALENDAR || '');
+  const keyword = normalizeText(process.env.HOME_ACTION_KEYWORD || defaultHomeActionKeyword);
+  const calendarLabel = normalizeText([
+    event.extendedProps?.calendarName,
+    event.extendedProps?.calendarId
+  ].join(' '));
+  const eventLabel = normalizeText([
+    event.title,
+    event.extendedProps?.description,
+    event.extendedProps?.location
+  ].join(' '));
+
+  if (calendarFilter) {
+    return calendarLabel.includes(calendarFilter);
+  }
+
+  return Boolean(parseHomeActionTitle(event.title)) || eventLabel.includes(keyword);
+}
+
+function homeActionPayload(event, now) {
+  return {
+    source: 'calendario-icloud-wall',
+    action: parseHomeActionTitle(event.title) || process.env.HOME_ACTION_DEFAULT_ACTION || 'event-started',
+    triggeredAt: now.toISOString(),
+    timezone: homeActionTimezone,
+    event: {
+      id: event.id,
+      title: event.title,
+      start: event.start,
+      end: event.end,
+      allDay: event.allDay,
+      calendarName: event.extendedProps?.calendarName || '',
+      location: event.extendedProps?.location || '',
+      description: event.extendedProps?.description || ''
+    }
+  };
+}
+
+function cleanupHomeActionKeys(now) {
+  const keepForMs = envNumber('HOME_ACTION_DEDUPE_HOURS', 36, 1) * 60 * 60 * 1000;
+
+  homeActionFiredKeys.forEach((firedAt, key) => {
+    if (now.getTime() - firedAt > keepForMs) {
+      homeActionFiredKeys.delete(key);
+    }
+  });
+}
+
+async function sendHomeActionWebhook(event, now) {
+  const response = await fetch(process.env.HOME_ACTION_WEBHOOK_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(process.env.HOME_ACTION_WEBHOOK_TOKEN
+        ? { Authorization: `Bearer ${process.env.HOME_ACTION_WEBHOOK_TOKEN}` }
+        : {})
+    },
+    body: JSON.stringify(homeActionPayload(event, now))
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => '');
+    throw new Error(`Webhook Casa respondio ${response.status}. ${message}`.trim());
+  }
+}
+
+async function checkHomeActions() {
+  if (!isHomeActionsConfigured()) {
+    return { configured: false, checked: 0, triggered: 0 };
+  }
+
+  const now = new Date();
+  const rangeStart = new Date(now.getTime() - homeActionWindowMs());
+  const rangeEnd = new Date(now.getTime() + homeActionLookaheadMs());
+  const payload = await fetchICloudEvents(rangeStart, rangeEnd);
+  let checked = 0;
+  let triggered = 0;
+
+  cleanupHomeActionKeys(now);
+
+  for (const event of payload.events) {
+    if (!isHomeActionEvent(event)) {
+      continue;
+    }
+
+    checked += 1;
+
+    const start = new Date(event.start);
+    const delta = now.getTime() - start.getTime();
+    const key = homeActionKey(event);
+
+    if (delta < 0 || delta > homeActionWindowMs() || homeActionFiredKeys.has(key)) {
+      continue;
+    }
+
+    await sendHomeActionWebhook(event, now);
+    homeActionFiredKeys.set(key, now.getTime());
+    triggered += 1;
+    console.log(`Accion Casa enviada: ${event.title} (${event.start})`);
+  }
+
+  homeActionLastRun = now.toISOString();
+  homeActionLastError = '';
+
+  return { configured: true, checked, triggered };
+}
+
+function startHomeActionScheduler() {
+  if (!isHomeActionsConfigured() || homeActionInterval) {
+    return;
+  }
+
+  const run = async () => {
+    try {
+      await checkHomeActions();
+    } catch (error) {
+      homeActionLastError = error.message;
+      console.error('No se pudo revisar acciones de Casa:', error);
+    }
+  };
+
+  void run();
+  homeActionInterval = setInterval(run, homeActionPollMs());
+  console.log('Acciones Casa activas por webhook.');
+}
+
 async function createICloudEvent({ calendarId, title, date, startTime, endTime, time, allDay, description, location }) {
   assertConfig();
 
@@ -670,6 +866,19 @@ app.get(['/api/health', '/health'], (_req, res) => {
   res.json({ ok: true, service: 'calendario-icloud-wall-server' });
 });
 
+app.get(['/api/home-actions/status', '/home-actions/status'], (_req, res) => {
+  res.json({
+    enabled: envFlag('HOME_ACTIONS_ENABLED'),
+    configured: isHomeActionsConfigured(),
+    running: Boolean(homeActionInterval),
+    lastRun: homeActionLastRun,
+    lastError: homeActionLastError,
+    firedCount: homeActionFiredKeys.size,
+    pollSeconds: homeActionPollMs() / 1000,
+    triggerWindowSeconds: homeActionWindowMs() / 1000
+  });
+});
+
 app.use((error, _req, res, _next) => {
   const status = error.status || 500;
   console.error(error);
@@ -681,6 +890,7 @@ app.use((error, _req, res, _next) => {
 if (isDirectRun) {
   app.listen(port, () => {
     console.log(`Servidor listo en http://127.0.0.1:${port}`);
+    startHomeActionScheduler();
   });
 }
 

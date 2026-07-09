@@ -30,11 +30,64 @@ ICLOUD_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
 CALDAV_SERVER=https://caldav.icloud.com
 PORT=4000
 VITE_USE_DEMO_EVENTS=false
+
+# Opcional: acciones de Casa por webhook
+HOME_ACTIONS_ENABLED=false
+HOME_ACTION_WEBHOOK_URL=http://homeassistant.local:8123/api/webhook/calendario-casa
+HOME_ACTION_WEBHOOK_TOKEN=
+HOME_ACTION_CALENDAR=
+HOME_ACTION_KEYWORD=casa
+HOME_ACTION_DEFAULT_ACTION=event-started
+HOME_ACTION_POLL_SECONDS=30
+HOME_ACTION_TRIGGER_WINDOW_SECONDS=90
+HOME_ACTION_LOOKAHEAD_MINUTES=15
 ```
 
 Las credenciales solo se usan en el servidor Express. El frontend nunca recibe la contrasena de iCloud.
 
 `VITE_USE_DEMO_EVENTS=false` mantiene la app usando solo eventos reales. Cambialo a `true` solo si quieres abrir la app en modo demo o mostrar datos demo cuando el backend no este disponible y todavia no haya datos reales cargados.
+
+## Acciones de Casa cuando empieza un evento
+
+Si quieres que el calendario dispare una automatizacion al llegar la hora de un evento, activa el webhook en `.env`:
+
+```bash
+HOME_ACTIONS_ENABLED=true
+HOME_ACTION_WEBHOOK_URL=http://homeassistant.local:8123/api/webhook/calendario-casa
+```
+
+Luego crea eventos con `Casa:` en el titulo, por ejemplo:
+
+```text
+Casa: encender luces sala
+Casa: apagar aire
+[casa: modo noche]
+```
+
+Cuando llegue la hora de inicio, el servidor envia un `POST` al webhook con este formato:
+
+```json
+{
+  "source": "calendario-icloud-wall",
+  "action": "encender luces sala",
+  "triggeredAt": "2026-07-04T18:00:00.000Z",
+  "event": {
+    "title": "Casa: encender luces sala",
+    "start": "2026-07-04T18:00:00.000Z",
+    "calendarName": "Casa"
+  }
+}
+```
+
+Tambien puedes hacer que todos los eventos de un calendario disparen acciones:
+
+```bash
+HOME_ACTION_CALENDAR=Casa
+```
+
+Si `HOME_ACTION_CALENDAR` esta vacio, se disparan los eventos que tengan la palabra configurada en `HOME_ACTION_KEYWORD` o una accion `Casa:` en el titulo. El endpoint `GET /api/home-actions/status` te dice si el scheduler esta activo, cuando corrio por ultima vez y si hubo algun error.
+
+Nota importante: esto funciona en un servidor Node persistente, por ejemplo la iMac, una Mac mini o una Raspberry Pi corriendo `npm run start` o `npm run dev`. En Vercel, el handler es serverless y no puede mantener un reloj interno revisando eventos cada 30 segundos.
 
 ## Despliegue en Vercel
 
