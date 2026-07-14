@@ -130,11 +130,20 @@ function eventLocation(event) {
   return String(event?.extendedProps?.location || '').trim();
 }
 
-function LinkifiedText({ text }) {
-  const urlPattern = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+function LinkifiedText({ text, linkPlainTextToMaps = false }) {
+  const value = String(text);
+  const urlPattern = /((?:https?:\/\/|www\.|maps\.app\.goo\.gl\/|goo\.gl\/maps\/|maps\.google\.[a-z.]+\/)[^\s"'<>]+)/gi;
+  const parts = value.split(urlPattern);
+  const hasUrl = parts.some((part) => /^(https?:\/\/|www\.|maps\.app\.goo\.gl\/|goo\.gl\/maps\/|maps\.google\.)/i.test(part));
 
-  return String(text).split(urlPattern).map((part, index) => {
-    if (!/^(https?:\/\/|www\.)/i.test(part)) {
+  if (linkPlainTextToMaps && !hasUrl && value.trim()) {
+    const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value.trim())}`;
+
+    return <a href={mapsHref} rel="noopener noreferrer" target="_blank">{value}</a>;
+  }
+
+  return parts.map((part, index) => {
+    if (!/^(https?:\/\/|www\.|maps\.app\.goo\.gl\/|goo\.gl\/maps\/|maps\.google\.)/i.test(part)) {
       return part;
     }
 
@@ -686,7 +695,7 @@ function EventDetail({ event, onBack, onEditNotes }) {
         {location && (
           <div className="event-detail-field">
             <span>Ubicacion</span>
-            <strong>{location}</strong>
+            <strong><LinkifiedText linkPlainTextToMaps text={location} /></strong>
           </div>
         )}
         <div className="event-detail-field event-notes-field">

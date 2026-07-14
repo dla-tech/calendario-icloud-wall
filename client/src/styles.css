@@ -757,7 +757,7 @@ h1 {
 .event-detail-close {
   position: absolute;
   top: 14px;
-  left: 16px;
+  right: 16px;
   z-index: 2;
   display: inline-flex;
   align-items: center;
@@ -765,18 +765,18 @@ h1 {
   width: 48px;
   height: 48px;
   padding: 0;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #dc2626;
   border-radius: 50%;
-  color: #0f172a;
-  background: #ffffff;
+  color: #ffffff;
+  background: #dc2626;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
   cursor: pointer;
 }
 
 .event-detail-close:hover {
-  border-color: #1f6feb;
-  color: #1f6feb;
-  background: #eff6ff;
+  border-color: #991b1b;
+  color: #ffffff;
+  background: #b91c1c;
 }
 
 .event-detail-head {
@@ -785,6 +785,7 @@ h1 {
   justify-content: space-between;
   gap: 24px;
   min-width: 0;
+  padding-right: 28px;
 }
 
 .event-detail-day {
@@ -857,14 +858,14 @@ h1 {
   line-height: 1.06;
 }
 
-.event-notes-field a {
+.event-detail-field a {
   color: #1d4ed8;
   text-decoration: underline;
   text-decoration-thickness: 0.08em;
   text-underline-offset: 0.12em;
 }
 
-.event-notes-field a:hover {
+.event-detail-field a:hover {
   color: #1f6feb;
 }
 
@@ -944,19 +945,19 @@ h1 {
 }
 
 .night-mode .event-detail-close {
-  border-color: #475569;
-  color: #e2e8f0;
-  background: #1e293b;
+  border-color: #ef4444;
+  color: #ffffff;
+  background: #dc2626;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
 }
 
 .night-mode .event-detail-close:hover {
-  border-color: #60a5fa;
-  color: #93c5fd;
-  background: #172033;
+  border-color: #fca5a5;
+  color: #ffffff;
+  background: #b91c1c;
 }
 
-.night-mode .event-notes-field a {
+.night-mode .event-detail-field a {
   color: #93c5fd;
 }
 
