@@ -130,6 +130,27 @@ function eventLocation(event) {
   return String(event?.extendedProps?.location || '').trim();
 }
 
+function LinkifiedText({ text }) {
+  const urlPattern = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+
+  return String(text).split(urlPattern).map((part, index) => {
+    if (!/^(https?:\/\/|www\.)/i.test(part)) {
+      return part;
+    }
+
+    const trailingPunctuation = part.match(/[.,!?;:)}\]]+$/)?.[0] || '';
+    const url = trailingPunctuation ? part.slice(0, -trailingPunctuation.length) : part;
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+
+    return (
+      <span key={`${url}-${index}`}>
+        <a href={href} rel="noopener noreferrer" target="_blank">{url}</a>
+        {trailingPunctuation}
+      </span>
+    );
+  });
+}
+
 function formatEventDay(date, isToday) {
   if (isToday) {
     return 'HOY';
@@ -647,19 +668,11 @@ function EventDetail({ event, onBack, onEditNotes }) {
   const isEditable = event.extendedProps?.editable && event.extendedProps?.eventUrl;
 
   return (
-    <article
-      className="event-detail"
-      onClick={onBack}
-      onKeyDown={(keyEvent) => {
-        if (keyEvent.key === 'Enter' || keyEvent.key === ' ' || keyEvent.key === 'Escape') {
-          keyEvent.preventDefault();
-          onBack();
-        }
-      }}
-      role="button"
-      tabIndex={0}
-    >
+    <article className="event-detail">
       <div className="event-accent" style={{ backgroundColor: event.backgroundColor }} />
+      <button aria-label="Cerrar notas" className="event-detail-close" onClick={onBack} title="Cerrar notas" type="button">
+        <X size={32} aria-hidden="true" />
+      </button>
       <div className="event-detail-head">
         <div>
           <div className="event-detail-day">{fullDateFormatter.format(eventDate)}</div>
@@ -678,7 +691,7 @@ function EventDetail({ event, onBack, onEditNotes }) {
         )}
         <div className="event-detail-field event-notes-field">
           <span>Notas</span>
-          <strong>{description || 'Sin notas escritas.'}</strong>
+          <strong><LinkifiedText text={description || 'Sin notas escritas.'} /></strong>
         </div>
       </div>
 
