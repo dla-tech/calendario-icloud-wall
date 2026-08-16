@@ -567,7 +567,7 @@ function EventBoard({ activeAlertEvent, currentDate, events, activeView, onDismi
   return (
     <section className={boardClassName} aria-label={title}>
       <div className="board-heading">
-        <p className="eyebrow">Apple Calendar / iCloud</p>
+        <p className="eyebrow">Apple + Google Calendar</p>
         <h1>{title}</h1>
       </div>
 
@@ -1529,7 +1529,7 @@ function App() {
   const [activeView, setActiveView] = useState('timeGridWeek');
   const [now, setNow] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [status, setStatus] = useState(useDemoEvents ? 'Modo demo activo' : 'Cargando eventos de iCloud...');
+  const [status, setStatus] = useState(useDemoEvents ? 'Modo demo activo' : 'Cargando calendarios...');
   const [syncError, setSyncError] = useState('');
   const [isLightMode, setIsLightMode] = useState(() => isDaytime(new Date()));
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
@@ -1569,7 +1569,7 @@ function App() {
       setStatus(
         nextEvents.length > 0
           ? `Actualizado ${syncTimeFormatter.format(new Date(payload.fetchedAt || Date.now()))}`
-          : 'Sin eventos de iCloud por ahora'
+          : 'Sin eventos por ahora'
       );
     } catch (requestError) {
       setSyncError(requestError.message);

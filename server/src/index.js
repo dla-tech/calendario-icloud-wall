@@ -28,6 +28,9 @@ app.use(express.json());
 const requiredEnv = ['ICLOUD_USERNAME', 'ICLOUD_APP_PASSWORD', 'CALDAV_SERVER'];
 const defaultHomeActionKeyword = 'casa';
 const homeActionTimezone = process.env.HOME_ACTION_TIMEZONE || 'America/Puerto_Rico';
+const defaultGoogleChurchCalendarFeed = 'https://calendar.google.com/calendar/ical/72086005a3ac9a324642e6977fb8f296d531c3520b03c6cf342495ed215e0186%40group.calendar.google.com/public/basic.ics';
+const googleChurchCalendarName = process.env.GOOGLE_CHURCH_CALENDAR_NAME || 'Calendario PIPJM Inc.';
+const googleChurchCalendarColor = process.env.GOOGLE_CHURCH_CALENDAR_COLOR || '#4285f4';
 
 function envFlag(name, defaultValue = false) {
   const value = process.env[name];
@@ -326,7 +329,7 @@ async function getCreateDAVClient() {
   return createDAVClient;
 }
 
-function parseCalendarObject(calendarObject, calendar, calendarIndex, rangeStart, rangeEnd) {
+function parseCalendarObject(calendarObject, calendar, calendarIndex, rangeStart, rangeEnd, options = {}) {
   if (!calendarObject.data) {
     return [];
   }
@@ -344,10 +347,12 @@ function parseCalendarObject(calendarObject, calendar, calendarIndex, rangeStart
       const calendarName = calendar.displayName || calendar.url || 'iCloud';
       const baseId = event.uid || calendarObject.url || `${title}-${event.startDate}`;
       const allDay = event.startDate?.isDate ?? false;
+      const isEditable = options.editable !== false;
       const editableProps = {
-        eventUrl: calendarObject.url,
+        eventUrl: isEditable ? calendarObject.url : '',
         uid: event.uid || baseId,
-        editable: !event.isRecurring()
+        editable: isEditable && !event.isRecurring(),
+        source: options.source || 'icloud'
       };
 
       if (!event.isRecurring()) {
@@ -407,7 +412,8 @@ function parseCalendarObject(calendarObject, calendar, calendarIndex, rangeStart
               calendarName,
               location: event.location || '',
               description: event.description || '',
-              editable: false
+              editable: false,
+              source: options.source || 'icloud'
             }
           });
         }
@@ -470,6 +476,168 @@ async function fetchICloudEvents(rangeStart, rangeEnd) {
   return {
     calendars: calendarResults.map((result) => result.calendar),
     events,
+    fetchedAt: new Date().toISOString()
+  };
+}
+
+async function fetchGoogleChurchEvents(rangeStart, rangeEnd) {
+  const apiKey = String(process.env.GOOGLE_CALENDAR_API_KEY || '').trim();
+  const calendarId = String(process.env.GOOGLE_CALENDAR_ID || '').trim();
+  const feedUrl = String(process.env.GOOGLE_CHURCH_CALENDAR_ICS_URL || defaultGoogleChurchCalendarFeed).trim();
+
+  if (apiKey && calendarId) {
+    const calendar = {
+      id: `google:${calendarId}`,
+      name: googleChurchCalendarName,
+      color: googleChurchCalendarColor,
+      readOnly: true,
+      source: 'google'
+    };
+    const events = [];
+    let pageToken = '';
+
+    do {
+      const params = new URLSearchParams({
+        key: apiKey,
+        timeMin: rangeStart.toISOString(),
+        timeMax: rangeEnd.toISOString(),
+        singleEvents: 'true',
+        orderBy: 'startTime',
+        maxResults: '2500'
+      });
+
+      if (pageToken) {
+        params.set('pageToken', pageToken);
+      }
+
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`;
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(15000)
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const detail = payload?.error?.message || `respuesta ${response.status}`;
+        const error = new Error(`Google Calendar: ${detail}.`);
+        error.status = 502;
+        throw error;
+      }
+
+      for (const item of payload.items || []) {
+        if (item.status === 'cancelled' || (!item.start?.dateTime && !item.start?.date)) {
+          continue;
+        }
+
+        const allDay = Boolean(item.start.date);
+        const start = item.start.dateTime || item.start.date;
+        const end = item.end?.dateTime || item.end?.date || start;
+
+        events.push({
+          id: `google-${item.id}-${start}`,
+          title: item.summary || 'Sin titulo',
+          start,
+          end,
+          allDay,
+          backgroundColor: calendar.color,
+          borderColor: calendar.color,
+          extendedProps: {
+            calendarId: calendar.id,
+            calendarName: calendar.name,
+            location: item.location || '',
+            description: item.description || '',
+            eventUrl: item.htmlLink || '',
+            uid: item.iCalUID || item.id,
+            editable: false,
+            source: 'google'
+          }
+        });
+      }
+
+      pageToken = payload.nextPageToken || '';
+    } while (pageToken);
+
+    return { calendars: [calendar], events };
+  }
+
+  if (apiKey || calendarId) {
+    const error = new Error('Configura GOOGLE_CALENDAR_API_KEY y GOOGLE_CALENDAR_ID juntos.');
+    error.status = 500;
+    throw error;
+  }
+
+  if (!feedUrl) {
+    return { calendars: [], events: [] };
+  }
+
+  let parsedUrl;
+
+  try {
+    parsedUrl = new URL(feedUrl);
+  } catch {
+    const error = new Error('GOOGLE_CHURCH_CALENDAR_ICS_URL no es una URL valida.');
+    error.status = 500;
+    throw error;
+  }
+
+  if (!['https:', 'http:'].includes(parsedUrl.protocol)) {
+    const error = new Error('GOOGLE_CHURCH_CALENDAR_ICS_URL debe usar http o https.');
+    error.status = 500;
+    throw error;
+  }
+
+  const response = await fetch(parsedUrl, {
+    headers: { Accept: 'text/calendar' },
+    signal: AbortSignal.timeout(15000)
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Google Calendar respondio ${response.status}.`);
+    error.status = 502;
+    throw error;
+  }
+
+  const calendar = {
+    url: 'google-church-calendar',
+    displayName: googleChurchCalendarName,
+    calendarColor: googleChurchCalendarColor
+  };
+  const events = parseCalendarObject(
+    { data: await response.text(), url: '' },
+    calendar,
+    0,
+    rangeStart,
+    rangeEnd,
+    { editable: false, source: 'google' }
+  );
+
+  return {
+    calendars: [{
+      id: calendar.url,
+      name: calendar.displayName,
+      color: calendar.calendarColor,
+      readOnly: true,
+      source: 'google'
+    }],
+    events
+  };
+}
+
+async function fetchAllEvents(rangeStart, rangeEnd) {
+  const iCloud = await fetchICloudEvents(rangeStart, rangeEnd);
+  let google = { calendars: [], events: [] };
+
+  try {
+    google = await fetchGoogleChurchEvents(rangeStart, rangeEnd);
+  } catch (error) {
+    // Los calendarios Apple siguen disponibles si el feed opcional de Google falla.
+    console.warn('No se pudo cargar el calendario Google de la iglesia:', error.message);
+  }
+
+  return {
+    calendars: [...iCloud.calendars, ...google.calendars],
+    events: [...iCloud.events, ...google.events]
+      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()),
     fetchedAt: new Date().toISOString()
   };
 }
@@ -820,7 +988,7 @@ async function handleEvents(req, res, next) {
     res.set('Expires', '0');
 
     const { start, end } = getRequestedRange(req.query);
-    const payload = await fetchICloudEvents(start, end);
+    const payload = await fetchAllEvents(start, end);
     res.json(payload);
   } catch (error) {
     next(error);

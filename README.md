@@ -31,6 +31,15 @@ CALDAV_SERVER=https://caldav.icloud.com
 PORT=4000
 VITE_USE_DEMO_EVENTS=false
 
+# Opcional: un calendario publico mediante Google Calendar API
+GOOGLE_CALENDAR_API_KEY=tu_clave_api_restringida
+GOOGLE_CALENDAR_ID=identificador@group.calendar.google.com
+GOOGLE_CHURCH_CALENDAR_NAME=Iglesia
+GOOGLE_CHURCH_CALENDAR_COLOR="#4285f4"
+
+# Alternativa: usar su direccion iCal en vez de la API
+GOOGLE_CHURCH_CALENDAR_ICS_URL=
+
 # Opcional: acciones de Casa por webhook
 HOME_ACTIONS_ENABLED=false
 HOME_ACTION_WEBHOOK_URL=http://homeassistant.local:8123/api/webhook/calendario-casa
@@ -44,6 +53,18 @@ HOME_ACTION_LOOKAHEAD_MINUTES=15
 ```
 
 Las credenciales solo se usan en el servidor Express. El frontend nunca recibe la contrasena de iCloud.
+
+### Mostrar el calendario Google de la iglesia junto a Apple
+
+El calendario publico **Calendario PIPJM Inc.** ya viene conectado por defecto y se combina automaticamente con los calendarios de iCloud. Los cambios hechos en Google Calendar aparecen en la siguiente actualizacion de la app.
+
+Para un calendario publico, copia su **ID del calendario** desde **Configuracion > Integrar calendario** y configura `GOOGLE_CALENDAR_API_KEY` y `GOOGLE_CALENDAR_ID`. La clave debe tener habilitada Google Calendar API y estar restringida a esa API. La aplicacion consulta Google desde el servidor; la clave nunca se incluye en `App.jsx`.
+
+Como alternativa, puedes conectarlo por iCal:
+
+En Google Calendar, abre **Configuracion > Configuracion de mis calendarios > [calendario de la iglesia] > Integrar calendario** y copia la **Direccion secreta en formato iCal**. Pegala como `GOOGLE_CHURCH_CALENDAR_ICS_URL` en `.env` (y tambien en las variables de entorno de Vercel si publicas alli).
+
+La app descarga exclusivamente esa URL y la combina con los calendarios de iCloud. Los eventos de Google se muestran como solo lectura: se crean y editan desde Google Calendar. No expongas ni publiques la direccion secreta iCal; funciona como una credencial.
 
 `VITE_USE_DEMO_EVENTS=false` mantiene la app usando solo eventos reales. Cambialo a `true` solo si quieres abrir la app en modo demo o mostrar datos demo cuando el backend no este disponible y todavia no haya datos reales cargados.
 
@@ -108,6 +129,9 @@ Agrega estas Environment Variables en Vercel:
 ICLOUD_USERNAME=tu-correo@icloud.com
 ICLOUD_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
 CALDAV_SERVER=https://caldav.icloud.com
+GOOGLE_CHURCH_CALENDAR_ICS_URL=https://calendar.google.com/calendar/ical/.../basic.ics
+GOOGLE_CHURCH_CALENDAR_NAME=Iglesia
+GOOGLE_CHURCH_CALENDAR_COLOR="#4285f4"
 ```
 
 El frontend llama siempre a `/api/events` desde el mismo dominio del despliegue. No necesitas configurar URLs publicas, dominios separados ni variables `VITE_*` para la API.
