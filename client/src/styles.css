@@ -603,6 +603,53 @@ h1 {
   font-weight: 950;
 }
 
+.event-calendar-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+  text-align: right;
+}
+
+.event-uniform {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-bottom: 3px;
+  color: #334155;
+  font-size: 19px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-transform: capitalize;
+}
+
+.event-uniform > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.event-uniform > span > span:first-child {
+  font-size: 25px;
+}
+
+.uniform-color-dot {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border: 2px solid rgba(15, 23, 42, 0.35);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+}
+
+.night-mode .uniform-color-dot {
+  border-color: rgba(255, 255, 255, 0.65);
+}
+
+.night-mode .event-uniform {
+  color: #e2e8f0;
+}
+
 .night-mode .event-meta .event-calendar-name {
   color: #cbd5e1;
 }
@@ -617,6 +664,21 @@ h1 {
   font-size: 22px;
 }
 
+.compact-event-board .event-uniform {
+  gap: 8px;
+  font-size: 14px;
+}
+
+.compact-event-board .event-uniform > span > span:first-child {
+  font-size: 18px;
+}
+
+.compact-event-board .uniform-color-dot {
+  width: 15px;
+  height: 15px;
+  flex-basis: 15px;
+}
+
 .dense-event-board .event-meta {
   gap: 8px;
   margin-top: 4px;
@@ -627,6 +689,22 @@ h1 {
   font-size: 17px;
 }
 
+.dense-event-board .event-uniform {
+  gap: 6px;
+  font-size: 11px;
+}
+
+.dense-event-board .event-uniform > span > span:first-child {
+  font-size: 14px;
+}
+
+.dense-event-board .uniform-color-dot {
+  width: 12px;
+  height: 12px;
+  flex-basis: 12px;
+  border-width: 1px;
+}
+
 .single-event-board .event-meta {
   margin-top: 22px;
   font-size: 26px;
@@ -634,6 +712,21 @@ h1 {
 
 .single-event-board .event-meta .event-calendar-name {
   font-size: 42px;
+}
+
+.single-event-board .event-uniform {
+  gap: 18px;
+  font-size: 28px;
+}
+
+.single-event-board .event-uniform > span > span:first-child {
+  font-size: 36px;
+}
+
+.single-event-board .uniform-color-dot {
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
 }
 
 .event-choice {

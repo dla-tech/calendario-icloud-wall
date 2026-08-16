@@ -130,6 +130,63 @@ function eventLocation(event) {
   return String(event?.extendedProps?.location || '').trim();
 }
 
+function uniformGarmentColor(text, garmentPattern) {
+  const nextGarmentPattern = '(?:camisa|pantal[oó]n|falda|corbata)';
+  const pattern = new RegExp(
+    `\\b${garmentPattern}\\b\\s*(?:de\\s+color\\s*)?[:=-]?\\s*([^,;()\\n]*?)(?=\\s+(?:y\\s+)?${nextGarmentPattern}\\b|[,;()\\n]|$)`,
+    'i'
+  );
+  const value = String(text || '').match(pattern)?.[1] || '';
+
+  return value
+    .replace(/^color\s+/i, '')
+    .replace(/\s+y\s*$/i, '')
+    .replace(/[.\s]+$/g, '')
+    .trim();
+}
+
+function eventUniform(event) {
+  if (event?.extendedProps?.source !== 'google') {
+    return [];
+  }
+
+  const text = `${event.title || ''}\n${eventDescription(event)}`;
+
+  return [
+    { key: 'shirt', icon: '👕', label: 'Camisa', color: uniformGarmentColor(text, 'camisa') },
+    { key: 'pants', icon: '👖', label: 'Pantalón', color: uniformGarmentColor(text, 'pantal[oó]n') },
+    { key: 'skirt', icon: '👗', label: 'Falda', color: uniformGarmentColor(text, 'falda') }
+  ].filter((garment) => garment.color);
+}
+
+function uniformColorValue(colorName) {
+  const normalized = String(colorName || '')
+    .toLocaleLowerCase('es-PR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+  const colors = [
+    { names: ['baby blue', 'azul bebe', 'celeste'], value: '#89cff0' },
+    { names: ['verde menta', 'menta'], value: '#98ff98' },
+    { names: ['mostaza'], value: '#d4a017' },
+    { names: ['blanco', 'blanca'], value: '#ffffff' },
+    { names: ['negro', 'negra'], value: '#111827' },
+    { names: ['rojo', 'roja'], value: '#dc2626' },
+    { names: ['azul marino'], value: '#172554' },
+    { names: ['azul'], value: '#2563eb' },
+    { names: ['verde'], value: '#16a34a' },
+    { names: ['rosa', 'rosado', 'rosada'], value: '#f472b6' },
+    { names: ['violeta', 'morado', 'morada'], value: '#7c3aed' },
+    { names: ['amarillo', 'amarilla'], value: '#facc15' },
+    { names: ['naranja', 'anaranjado', 'anaranjada'], value: '#f97316' },
+    { names: ['gris'], value: '#64748b' },
+    { names: ['beige', 'crema'], value: '#e7d7b7' },
+    { names: ['marron', 'cafe'], value: '#7c4a2d' }
+  ];
+
+  return colors.find((entry) => entry.names.some((name) => normalized.includes(name)))?.value || '#94a3b8';
+}
+
 function LinkifiedText({ text, linkPlainTextToMaps = false }) {
   const value = String(text);
   const urlPattern = /((?:https?:\/\/|www\.|maps\.app\.goo\.gl\/|goo\.gl\/maps\/|maps\.google\.[a-z.]+\/)[^\s"'<>]+)/gi;
@@ -605,6 +662,7 @@ function EventBoard({ activeAlertEvent, currentDate, events, activeView, onDismi
             const isToday = isSameDay(eventDate, currentDate);
             const isHighlighted = highlightedIds.has(event.id);
             const isEditable = event.extendedProps?.editable && event.extendedProps?.eventUrl;
+            const uniform = eventUniform(event);
 
             return (
               <article
@@ -628,7 +686,23 @@ function EventBoard({ activeAlertEvent, currentDate, events, activeView, onDismi
                 <div className="event-title">{event.title}</div>
                 <div className="event-meta">
                   <span>{isToday ? 'Hoy' : fullDateFormatter.format(eventDate)}</span>
-                  <span className="event-calendar-name">{event.extendedProps?.calendarName}</span>
+                  <div className="event-calendar-stack">
+                    {uniform.length > 0 && (
+                      <div className="event-uniform" aria-label="Uniforme">
+                        {uniform.map((garment) => (
+                          <span aria-label={`${garment.label}: ${garment.color}`} key={garment.key} title={`${garment.label}: ${garment.color}`}>
+                            <span aria-hidden="true">{garment.icon}</span>
+                            <span
+                              aria-hidden="true"
+                              className="uniform-color-dot"
+                              style={{ backgroundColor: uniformColorValue(garment.color) }}
+                            />
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <span className="event-calendar-name">{event.extendedProps?.calendarName}</span>
+                  </div>
                 </div>
               </article>
             );
