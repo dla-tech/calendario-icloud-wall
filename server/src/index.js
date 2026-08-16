@@ -30,7 +30,7 @@ const defaultHomeActionKeyword = 'casa';
 const homeActionTimezone = process.env.HOME_ACTION_TIMEZONE || 'America/Puerto_Rico';
 const defaultGoogleChurchCalendarFeed = 'https://calendar.google.com/calendar/ical/72086005a3ac9a324642e6977fb8f296d531c3520b03c6cf342495ed215e0186%40group.calendar.google.com/public/basic.ics';
 const googleChurchCalendarName = process.env.GOOGLE_CHURCH_CALENDAR_NAME || 'Calendario PIPJM Inc.';
-const googleChurchCalendarColor = process.env.GOOGLE_CHURCH_CALENDAR_COLOR || '#4285f4';
+const googleChurchCalendarColor = process.env.GOOGLE_CHURCH_CALENDAR_COLOR || '#E7D7B7';
 
 function envFlag(name, defaultValue = false) {
   const value = process.env[name];

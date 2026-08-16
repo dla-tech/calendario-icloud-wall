@@ -35,7 +35,7 @@ VITE_USE_DEMO_EVENTS=false
 GOOGLE_CALENDAR_API_KEY=tu_clave_api_restringida
 GOOGLE_CALENDAR_ID=identificador@group.calendar.google.com
 GOOGLE_CHURCH_CALENDAR_NAME=Iglesia
-GOOGLE_CHURCH_CALENDAR_COLOR="#4285f4"
+GOOGLE_CHURCH_CALENDAR_COLOR="#E7D7B7"
 
 # Alternativa: usar su direccion iCal en vez de la API
 GOOGLE_CHURCH_CALENDAR_ICS_URL=
@@ -131,7 +131,7 @@ ICLOUD_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
 CALDAV_SERVER=https://caldav.icloud.com
 GOOGLE_CHURCH_CALENDAR_ICS_URL=https://calendar.google.com/calendar/ical/.../basic.ics
 GOOGLE_CHURCH_CALENDAR_NAME=Iglesia
-GOOGLE_CHURCH_CALENDAR_COLOR="#4285f4"
+GOOGLE_CHURCH_CALENDAR_COLOR="#E7D7B7"
 ```
 
 El frontend llama siempre a `/api/events` desde el mismo dominio del despliegue. No necesitas configurar URLs publicas, dominios separados ni variables `VITE_*` para la API.
